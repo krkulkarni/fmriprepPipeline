@@ -1,0 +1,11 @@
+{
+    "name": "test03",
+    "description": "This is the description",
+    "root": "bids_root/",
+    "anat": "dicoms/anat_dicom/",
+    "func": [
+        "dicoms/func_dicom/",
+        "dicoms/func_dicom2/"
+    ],
+    "overwrite": "true"
+}

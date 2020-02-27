@@ -94,21 +94,18 @@ class FmriprepPipeline(object):
 
     def convert(self):
         # Run dcm2niix for anatomical DICOM and rename
-        process = subprocess.run(['dcm2niix', '-z', 'n',
-                                    '-f', 'anat_temp',
-                                    '-b', 'y',
-                                    '-o', self.anat_path,
-                                    self.pdict['anat']], shell=True)
+        command = ['dcm2niix', '-z', 'n', '-f', 'anat_temp', '-b', 'y', '-o', self.anat_path, self.pdict['anat']]
+        print(command)
+        process = subprocess.run(command)
+
         # Run dcm2niix for every functional DICOM and rename
         run_counter = 1
         for func in self.pdict['func']:
             func_name = f'func_temp_{str(run_counter)}'
-            process = subprocess.run(['dcm2niix', '-z', 'n',
-                                    '-f', func_name,
-                                    '-b', 'y',
-                                    '-o', self.func_path,
-                                    self.pdict['anat']], shell=True)
-        run_counter += 1
+            command = ['dcm2niix', '-z', 'n', '-f', func_name, '-b', 'y', '-o', self.func_path, self.pdict['anat']]
+            print(command)
+            process = subprocess.run(command)
+            run_counter += 1
         
 
     def update_json(self):
