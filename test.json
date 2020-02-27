@@ -1,10 +1,11 @@
 {
     "name": "test03",
     "description": "This is the description",
-    "root": "root/",
-    "anat": "g:\\My Drive\\Schiller Gu Lab\\fmriprep_pipeline\\anat_dicom/",
+    "root": "bids_root/",
+    "anat": "g:\\My Drive\\Schiller Gu Lab\\fmriprep_pipeline\\dicoms\\anat_dicom/",
     "func": [
-        "g:\\My Drive\\Schiller Gu Lab\\fmriprep_pipeline\\func_dicom/",
-        "g:\\My Drive\\Schiller Gu Lab\\fmriprep_pipeline\\func_dicom2/"
-    ]
+        "g:\\My Drive\\Schiller Gu Lab\\fmriprep_pipeline\\dicoms\\func_dicom/",
+        "g:\\My Drive\\Schiller Gu Lab\\fmriprep_pipeline\\dicoms\\func_dicom2/"
+    ],
+    "overwrite": "true"
 }

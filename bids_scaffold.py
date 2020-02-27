@@ -6,12 +6,15 @@ import argparse
 import json
 import os
 import subprocess
+import shutil
 
 class FmriprepPipeline(object):
 
     def __init__(self):
         self.pdict = None
         self.root_exists = False
+        self.anat_path = ""
+        self.func_path = ""
 
 
     def read_json(self, param_path):
@@ -30,8 +33,11 @@ class FmriprepPipeline(object):
         if os.path.isdir(root_path):
             self.root_exists = True
         
-        if os.path.isdir("/".join([root_path,self.pdict['name']])):
-            raise OSError(f"'{self.pdict['name']}' exists! Try a different subject name, or delete existing folder.")
+        if os.path.isdir(f'{self.pdict["root"]}/sub-{self.pdict["name"]}'):
+            if self.pdict['overwrite'] == 'true':
+                shutil.rmtree(f'{self.pdict["root"]}/sub-{self.pdict["name"]}')
+            else:
+                raise OSError(f"'{self.pdict['name']}' exists! Try a different subject name, or delete existing folder.")
 
         if not os.path.isdir(self.pdict['anat']):
             raise OSError(f"'{self.pdict['anat']}' does not exist! Input a valid anatomical DICOM directory.")
@@ -77,26 +83,36 @@ class FmriprepPipeline(object):
 
         # Create anat and func directories (if in params)
         if self.pdict['anat']:
-            anat_path = f'{sub_path}/anat/'
-            os.makedirs(anat_path)
+            self.anat_path = f'{sub_path}/anat/'
+            os.makedirs(self.anat_path)
         
         if self.pdict['func']:
-            func_path = f'{sub_path}/func/'
-            os.makedirs(func_path)
+            self.func_path = f'{sub_path}/func/'
+            os.makedirs(self.func_path)
 
+        print ("Completed!")
 
     def convert(self):
-        # Run dcm2niix for anatomical DICOM
-        process = subprocess.run(['dir'], shell=True)
-        print(process)
-        # Run dcm2niix for every functional DICOM
-        process = subprocess.run(['dir'], shell=True)
-        print(process)
-        # Rename
+        # Run dcm2niix for anatomical DICOM and rename
+        process = subprocess.run(['dcm2niix', '-z', 'n',
+                                    '-f', 'anat_temp',
+                                    '-b', 'y',
+                                    '-o', self.anat_path,
+                                    self.pdict['anat']], shell=True)
+        # Run dcm2niix for every functional DICOM and rename
+        run_counter = 1
+        for func in self.pdict['func']:
+            func_name = f'func_temp_{str(run_counter)}'
+            process = subprocess.run(['dcm2niix', '-z', 'n',
+                                    '-f', func_name,
+                                    '-b', 'y',
+                                    '-o', self.func_path,
+                                    self.pdict['anat']], shell=True)
+        run_counter += 1
         
 
     def update_json(self):
-        # Add TaskName field to functional NIFTI sidecars
+        # Add TaskName field to BIDS functional NIFTI sidecars
         pass
 
 
