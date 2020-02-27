@@ -7,5 +7,6 @@
         "dicoms/session1/",
         "dicoms/session2/"
     ],
+    "task": "recall",
     "overwrite": "true"
 }
