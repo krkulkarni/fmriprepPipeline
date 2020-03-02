@@ -26,6 +26,10 @@ class FmriprepPipeline(object):
         except FileNotFoundError:
             raise FileNotFoundError(f'\'{args.parameters}\' does not exist. Please try again with a valid parameters file.')
 
+    def create_json(self, subs, root, anat_format, func_format, task_name):
+        self.pdict = {}
+        for s in subs:
+            
 
     def validate(self):
         print('Validating parameters.....', end='')
