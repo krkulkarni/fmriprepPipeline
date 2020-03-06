@@ -30,6 +30,6 @@ Please make sure to update tests as appropriate.
 
 ## Authors
 
-* **Kaustubh Kulkarni** - *Initial work* - [More Info](https://github.com/kulkarnik)
+* **Kaustubh Kulkarni** - *Initial work* - [More Info](https://kulkarnik.com)
 
 See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
