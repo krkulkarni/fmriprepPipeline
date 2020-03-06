@@ -15,6 +15,8 @@ class FmriprepPipeline(object):
         self.root_exists = False
         self.anat_path = ""
         self.func_path = ""
+        self.anat_name = ""
+        self.func_name = []
 
 
     def read_json(self, param_path):
@@ -24,6 +26,10 @@ class FmriprepPipeline(object):
         except FileNotFoundError:
             raise FileNotFoundError(f'\'{args.parameters}\' does not exist. Please try again with a valid parameters file.')
 
+    def create_json(self, subs, root, anat_format, func_format, task_name):
+        self.pdict = {}
+        for s in subs:
+            
 
     def validate(self):
         print('Validating parameters.....', end='')
@@ -85,7 +91,7 @@ class FmriprepPipeline(object):
         if self.pdict['anat']:
             self.anat_path = f'{sub_path}/anat/'
             os.makedirs(self.anat_path)
-        
+
         if self.pdict['func']:
             self.func_path = f'{sub_path}/func/'
             os.makedirs(self.func_path)
@@ -94,26 +100,32 @@ class FmriprepPipeline(object):
 
     def convert(self):
         # Run dcm2niix for anatomical DICOM and rename
-        process = subprocess.run(['dcm2niix', '-z', 'n',
-                                    '-f', 'anat_temp',
-                                    '-b', 'y',
-                                    '-o', self.anat_path,
-                                    self.pdict['anat']], shell=True)
+        self.anat_name = f'sub-{self.pdict["name"]}_T1w'
+        command = ['dcm2niix', '-z', 'n', '-f', self.anat_name, '-b', 'y', '-o', self.anat_path, self.pdict['anat']]
+        #print(command)
+        process = subprocess.run(command)
+
+
         # Run dcm2niix for every functional DICOM and rename
         run_counter = 1
-        for func in self.pdict['func']:
-            func_name = f'func_temp_{str(run_counter)}'
-            process = subprocess.run(['dcm2niix', '-z', 'n',
-                                    '-f', func_name,
-                                    '-b', 'y',
-                                    '-o', self.func_path,
-                                    self.pdict['anat']], shell=True)
-        run_counter += 1
+        for func_input in self.pdict['func']:
+            func_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_bold'
+            self.func_name.append(func_name)
+            command = ['dcm2niix', '-z', 'n', '-f', func_name, '-b', 'y', '-o', self.func_path, func_input]
+            #print(command)
+            process = subprocess.run(command)
+            run_counter += 1
         
 
     def update_json(self):
         # Add TaskName field to BIDS functional NIFTI sidecars
-        pass
+        for func in self.func_name:
+            with open(f'{self.func_path}/{func}.json') as json_file:
+                data = json.load(json_file)
+                data['TaskName'] = self.pdict["task"]
+
+            with open(f'{self.func_path}/{func}.json', 'w') as outfile:
+                json.dump(data,outfile)
 
 
     def run_fmriprep(self):
