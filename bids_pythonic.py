@@ -9,10 +9,11 @@ import subprocess
 import shutil
 import logging
 import datetime
+import time
 
-class FmriprepPipeline(object):
+class BIDSPipeline(object):
 
-    def __init__(self, params, pipeline_dir=os.getcwd()):
+    def __init__(self, params, pipeline_dir=os.getcwd(), singularity_batch_created=False):
         if not os.path.exists(pipeline_dir):
             os.makedirs(pipeline_dir)
         self.pipeline_dir = pipeline_dir
@@ -28,6 +29,8 @@ class FmriprepPipeline(object):
         self.func_path = ""
         self.anat_name = ""
         self.func_name = []
+
+        self.singularity_batch_created = singularity_batch_created
             
 
     def validate(self):
@@ -138,10 +141,14 @@ class FmriprepPipeline(object):
         logging.info('Completed!')
 
 
-# Standalone module method
-def run_fmriprep(subs, bids_root, output, fs_license, freesurfer=False, minerva=False, minerva_options = {}):
-    # Run fmriprep-docker command
-    if not minerva:
+class FmriprepDockerPipeline(object):
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def run_fmriprep(self, subs, bids_root, output, fs_license, freesurfer=False):
+        # Run fmriprep-docker command
         logging.info('Executing fmriprep-docker command')
         command = ['fmriprep-docker', bids_root, output, 'participant', '--fs-license-file', fs_license]
         if not freesurfer:
@@ -149,7 +156,19 @@ def run_fmriprep(subs, bids_root, output, fs_license, freesurfer=False, minerva=
         logging.info(command)
         subprocess.run(command)
 
-    elif minerva:
+class FmriprepSingularityPipeline(object):
+
+    def __init__(self, subs, bids_root, output, fs_license, freesurfer, minerva_options, singularity_batch_created=False):
+        self.subs = subs
+        self.bids_root = bids_root
+        self.output = output
+        self.fs_license = fs_license
+        self.freesurfer = freesurfer
+        self.minerva_options = minerva_options
+        self.batch_dir = minerva_options['batch_dir']
+        self.singularity_batch_created = singularity_batch_created
+
+    def create_singularity_batch(self):
         logging.info('Setting up fmriprep command through Singularity for Minerva')
         
         # if not os.path.isfile(f'{minerva_options["image_directory"]}/fmriprep-20.0.1.simg'):
@@ -157,14 +176,13 @@ def run_fmriprep(subs, bids_root, output, fs_license, freesurfer=False, minerva=
         #     raise OSError('fmriprep image does not exist in the given directory!')
 
         logging.info('Creating batch directory for subject scripts')
-        batch_dir = f'{minerva_options["batch_dir"]}'
-        if not os.path.isdir(batch_dir):
-            os.makedirs(batch_dir)
-        if not os.path.isdir(f'{batch_dir}/batchoutput'):
-            os.makedirs(f'{batch_dir}/batchoutput')
+        if not os.path.isdir(self.batch_dir):
+            os.makedirs(self.batch_dir)
+        if not os.path.isdir(f'{self.batch_dir}/batchoutput'):
+            os.makedirs(f'{self.batch_dir}/batchoutput')
 
-        for sub in subs:
-            sub_batch_script = f'{batch_dir}/sub-{sub}.sh'
+        for sub in self.subs:
+            sub_batch_script = f'{self.batch_dir}/sub-{sub}.sh'
             with open(sub_batch_script, 'w') as f:
                 lines = [
                 f'#!/bin/bash\n\n',
@@ -174,17 +192,36 @@ def run_fmriprep(subs, bids_root, output, fs_license, freesurfer=False, minerva=
                 f'#BSUB -n 4\n',
                 f'#BSUB -W 20:00\n',
                 f'#BSUB -R rusage[mem=16000]\n',
-                f'#BSUB -o {batch_dir}/batchoutput/nodejob-fmriprep-sub-{sub}.out\n',
+                f'#BSUB -o {self.batch_dir}/batchoutput/nodejob-fmriprep-sub-{sub}.out\n',
                 f'#BSUB -L /bin/bash\n\n',
                 f'ml singularity/3.2.1\n\n',
-                f'cd {minerva_options["image_directory"]}\n',
+                f'cd {self.minerva_options["image_directory"]}\n',
                 ]
                 f.writelines(lines)
 
-                command = f'singularity run --home {minerva_options["hpc_home"]} --cleanenv fmriprep-20.0.1.simg {bids_root} {output} participant --participant-label {sub} --notrack --fs-license-file {fs_license}'
-                if not freesurfer:
+                command = f'singularity run --home {self.minerva_options["hpc_home"]} --cleanenv fmriprep-20.0.1.simg {self.bids_root} {self.output} participant --participant-label {sub} --notrack --fs-license-file {self.fs_license}'
+                if not self.freesurfer:
                    command = " ".join([command, '--fs-no-reconall'])
-                f.write(command) 
+                f.write(command)
+
+        self.minerva_options['subs'] = self.subs
+        self.minerva_options['bids_root'] = self.bids_root
+        self.minerva_options['output'] = self.output
+        self.minerva_options['freesurfer'] = self.freesurfer
+
+        with open(f'{self.batch_dir}/minerva_options.json', 'w') as f:
+            json.dump(self.minerva_options, f) 
+
+        self.singularity_batch_created = True
+
+
+    def run_singularity_batch(self):
+        logging.info('Submitting singularity batch scripts to the private queue')
+        if self.singularity_batch_created:
+            for sub in self.subs:
+                subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh')
+                time.sleep(60)
+
 
 
 def motionreg(subs):
