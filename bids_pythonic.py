@@ -7,48 +7,67 @@ import json
 import os
 import subprocess
 import shutil
+import logging
+import datetime
+import time
 
-class FmriprepPipeline(object):
+class BIDSPipeline(object):
 
-    def __init__(self, params):
+    def __init__(self, params, pipeline_dir=os.getcwd(), singularity_batch_created=False):
+        if not os.path.exists(pipeline_dir):
+            os.makedirs(pipeline_dir)
+        self.pipeline_dir = pipeline_dir
+
+        x = datetime.datetime.now()
+        timestamp = x.strftime("%m-%d_%H%M")
+        self.logfile = f'{self.pipeline_dir}/log_{timestamp}.txt'
+        logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
+
         self.pdict = params
         self.root_exists = False
         self.anat_path = ""
         self.func_path = ""
         self.anat_name = ""
         self.func_name = []
+
+        self.singularity_batch_created = singularity_batch_created
             
 
     def validate(self):
-        print('Validating parameters.....', end='')
+        logging.info('Validating parameters.....')
 
         # Validate parameters dictionary
         root_path = self.pdict['root']
         if os.path.isdir(root_path):
+            logging.warning('Root Exists! Not overwriting.')
             self.root_exists = True
         
         if os.path.isdir(f'{self.pdict["root"]}/sub-{self.pdict["name"]}'):
             if self.pdict['overwrite'] == 'true':
+                logging.warning(f'Overwrite option selected! Removing subject {self.pdict["name"]}')
                 shutil.rmtree(f'{self.pdict["root"]}/sub-{self.pdict["name"]}')
             else:
+                logging.error(f"{self.pdict['name']}' exists! Try a different subject name, or delete existing folder.")
                 raise OSError(f"'{self.pdict['name']}' exists! Try a different subject name, or delete existing folder.")
 
         if not os.path.isdir(self.pdict['anat']):
+            logging.error(f"'{self.pdict['anat']}' does not exist! Input a valid anatomical DICOM directory.")
             raise OSError(f"'{self.pdict['anat']}' does not exist! Input a valid anatomical DICOM directory.")
 
         for func in self.pdict['func']:
             if not os.path.isdir(func):
+                logging.error(f"'{func}' does not exist! Input a valid functional DICOM directory.")
                 raise OSError(f"'{func}' does not exist! Input a valid functional DICOM directory.")
     
         # Validate fmriprep-docker requirements
 
         # Validate motion regression requirements
 
-        print('Validated!')
+        logging.info('Validated!')
 
 
     def create_bids_hierarchy(self):
-        print('Creating BIDS hierarchy.....', end='')
+        logging.info('Creating BIDS hierarchy.....')
 
         # Create root directory
         # Create dataset_description.json and README
@@ -84,17 +103,20 @@ class FmriprepPipeline(object):
             self.func_path = f'{sub_path}/func/'
             os.makedirs(self.func_path)
 
-        print ("Completed!")
+        logging.info("Completed!")
 
     def convert(self):
         # Run dcm2niix for anatomical DICOM and rename
+        logging.info('Converting anatomical DICOMs to NIFTI and renaming.....')
         self.anat_name = f'sub-{self.pdict["name"]}_T1w'
         command = ['dcm2niix', '-z', 'n', '-f', self.anat_name, '-b', 'y', '-o', self.anat_path, self.pdict['anat']]
         #print(command)
         process = subprocess.run(command)
+        logging.info('Completed!')
 
 
         # Run dcm2niix for every functional DICOM and rename
+        logging.info('Converting functional DICOMs to NIFTI and renaming.....')
         run_counter = 1
         for func_input in self.pdict['func']:
             func_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_bold'
@@ -103,10 +125,12 @@ class FmriprepPipeline(object):
             #print(command)
             process = subprocess.run(command)
             run_counter += 1
-        
+        logging.info('Completed!')
+
 
     def update_json(self):
         # Add TaskName field to BIDS functional NIFTI sidecars
+        logging.info('Updating functional NIFTI sidecars.....')
         for func in self.func_name:
             with open(f'{self.func_path}/{func}.json') as json_file:
                 data = json.load(json_file)
@@ -114,23 +138,92 @@ class FmriprepPipeline(object):
 
             with open(f'{self.func_path}/{func}.json', 'w') as outfile:
                 json.dump(data,outfile)
+        logging.info('Completed!')
 
 
-    def run_fmriprep(self):
+class FmriprepDockerPipeline(object):
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def run_fmriprep(self, subs, bids_root, output, fs_license, freesurfer=False):
         # Run fmriprep-docker command
-        pass
+        logging.info('Executing fmriprep-docker command')
+        command = ['fmriprep-docker', bids_root, output, 'participant', '--fs-license-file', fs_license]
+        if not freesurfer:
+            command.append('--fs-no-reconall')
+        logging.info(command)
+        subprocess.run(command)
+
+class FmriprepSingularityPipeline(object):
+
+    def __init__(self, subs, bids_root, output, fs_license, freesurfer, minerva_options, singularity_batch_created=False):
+        self.subs = subs
+        self.bids_root = bids_root
+        self.output = output
+        self.fs_license = fs_license
+        self.freesurfer = freesurfer
+        self.minerva_options = minerva_options
+        self.batch_dir = minerva_options['batch_dir']
+        self.singularity_batch_created = singularity_batch_created
+
+    def create_singularity_batch(self):
+        logging.info('Setting up fmriprep command through Singularity for Minerva')
+        
+        # if not os.path.isfile(f'{minerva_options["image_directory"]}/fmriprep-20.0.1.simg'):
+        #     logging.error('fmriprep image does not exist in the given directory!')
+        #     raise OSError('fmriprep image does not exist in the given directory!')
+
+        logging.info('Creating batch directory for subject scripts')
+        if not os.path.isdir(self.batch_dir):
+            os.makedirs(self.batch_dir)
+        if not os.path.isdir(f'{self.batch_dir}/batchoutput'):
+            os.makedirs(f'{self.batch_dir}/batchoutput')
+
+        for sub in self.subs:
+            sub_batch_script = f'{self.batch_dir}/sub-{sub}.sh'
+            with open(sub_batch_script, 'w') as f:
+                lines = [
+                f'#!/bin/bash\n\n',
+                f'#BSUB -J fmriprep_sub-{sub}\n',
+                f'#BSUB -P acc_guLab\n',
+                f'#BSUB -q private\n',
+                f'#BSUB -n 4\n',
+                f'#BSUB -W 20:00\n',
+                f'#BSUB -R rusage[mem=16000]\n',
+                f'#BSUB -o {self.batch_dir}/batchoutput/nodejob-fmriprep-sub-{sub}.out\n',
+                f'#BSUB -L /bin/bash\n\n',
+                f'ml singularity/3.2.1\n\n',
+                f'cd {self.minerva_options["image_directory"]}\n',
+                ]
+                f.writelines(lines)
+
+                command = f'singularity run --home {self.minerva_options["hpc_home"]} --cleanenv fmriprep-20.0.1.simg {self.bids_root} {self.output} participant --participant-label {sub} --notrack --fs-license-file {self.fs_license}'
+                if not self.freesurfer:
+                   command = " ".join([command, '--fs-no-reconall'])
+                f.write(command)
+
+        self.minerva_options['subs'] = self.subs
+        self.minerva_options['bids_root'] = self.bids_root
+        self.minerva_options['output'] = self.output
+        self.minerva_options['freesurfer'] = self.freesurfer
+
+        with open(f'{self.batch_dir}/minerva_options.json', 'w') as f:
+            json.dump(self.minerva_options, f) 
+
+        self.singularity_batch_created = True
 
 
-    def motionreg(self):
-        # Run either GLM regression or ART repair for motion
-        pass
+    def run_singularity_batch(self):
+        logging.info('Submitting singularity batch scripts to the private queue')
+        if self.singularity_batch_created:
+            for sub in self.subs:
+                subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh')
+                time.sleep(60)
 
-if __name__ == "__main__":
-    pipeline = FmriprepPipeline()
-    pipeline.read_json(args.parameters)
-    pipeline.validate()
-    pipeline.create_bids_hierarchy()
-    pipeline.convert()
-    pipeline.update_json()
-    pipeline.run_fmriprep()
-    pipeline.motionreg()
+
+
+def motionreg(subs):
+    # Run either GLM regression or ART repair for motion
+    pass
