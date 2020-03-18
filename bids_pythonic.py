@@ -4,16 +4,16 @@
 
 import argparse
 import json
-import os
+import os, glob
 import subprocess
 import shutil
 import logging
 import datetime
 import time
 
-class BIDSPipeline(object):
+class SetupBIDSPipeline(object):
 
-    def __init__(self, params, pipeline_dir=os.getcwd(), singularity_batch_created=False):
+    def __init__(self, params, pipeline_dir=os.getcwd(), singularity_batch_created=False, root_exists=False):
         if not os.path.exists(pipeline_dir):
             os.makedirs(pipeline_dir)
         self.pipeline_dir = pipeline_dir
@@ -24,7 +24,7 @@ class BIDSPipeline(object):
         logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
         self.pdict = params
-        self.root_exists = False
+        self.root_exists = root_exists
         self.anat_path = ""
         self.func_path = ""
         self.anat_name = ""
@@ -33,7 +33,7 @@ class BIDSPipeline(object):
         self.singularity_batch_created = singularity_batch_created
             
 
-    def validate(self):
+    def validate(self, multiecho=False):
         logging.info('Validating parameters.....')
 
         # Validate parameters dictionary
@@ -55,9 +55,17 @@ class BIDSPipeline(object):
             raise OSError(f"'{self.pdict['anat']}' does not exist! Input a valid anatomical DICOM directory.")
 
         for func in self.pdict['func']:
-            if not os.path.isdir(func):
-                logging.error(f"'{func}' does not exist! Input a valid functional DICOM directory.")
-                raise OSError(f"'{func}' does not exist! Input a valid functional DICOM directory.")
+            if not multiecho:
+                if not os.path.isdir(func):
+                    logging.error(f"'{func}' does not exist! Input a valid functional DICOM directory.")
+                    raise OSError(f"'{func}' does not exist! Input a valid functional DICOM directory.")
+            elif multiecho:
+                if not "echo" in func:
+                    logging.error(f"'Echo' key does not exist in params! See documentation for multiecho.")
+                for echo in func['echo']:
+                    if not os.path.isdir(echo):
+                        logging.error(f"'{echo}' does not exist! Input a valid functional DICOM directory.")
+                        raise OSError(f"'{echo}' does not exist! Input a valid functional DICOM directory.")
     
         # Validate fmriprep-docker requirements
 
@@ -92,41 +100,76 @@ class BIDSPipeline(object):
 
         # Create subject directory
         sub_path = f'{self.pdict["root"]}/sub-{self.pdict["name"]}'
-        os.makedirs(sub_path)
+        try:
+            os.makedirs(sub_path)
+        except FileExistsError:
+            logging.warning('sub directory exists!')
 
         # Create anat and func directories (if in params)
         if self.pdict['anat']:
             self.anat_path = f'{sub_path}/anat/'
-            os.makedirs(self.anat_path)
+            try:
+                os.makedirs(self.anat_path)
+            except FileExistsError:
+                logging.warning('anat directory exists')
 
         if self.pdict['func']:
             self.func_path = f'{sub_path}/func/'
-            os.makedirs(self.func_path)
+            try:
+                os.makedirs(self.func_path)
+            except FileExistsError:
+                logging.warning('func directory exists')
 
         logging.info("Completed!")
 
-    def convert(self):
+    def convert(self, multiecho=False):
         # Run dcm2niix for anatomical DICOM and rename
         logging.info('Converting anatomical DICOMs to NIFTI and renaming.....')
         self.anat_name = f'sub-{self.pdict["name"]}_T1w'
         command = ['dcm2niix', '-z', 'n', '-f', self.anat_name, '-b', 'y', '-o', self.anat_path, self.pdict['anat']]
         #print(command)
-        process = subprocess.run(command)
+        print(f'{self.anat_path}/{self.anat_name}.nii')
+        if not os.path.exists(f'{self.anat_path}/{self.anat_name}.nii'):
+            process = subprocess.run(command)
+            print('Running dcm2niix')
+        else:
+            logging.warning(f'{self.anat_name} exists! Not overwriting.')
         logging.info('Completed!')
 
-
+        
         # Run dcm2niix for every functional DICOM and rename
         logging.info('Converting functional DICOMs to NIFTI and renaming.....')
-        run_counter = 1
-        for func_input in self.pdict['func']:
-            func_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_bold'
-            self.func_name.append(func_name)
-            command = ['dcm2niix', '-z', 'n', '-f', func_name, '-b', 'y', '-o', self.func_path, func_input]
-            #print(command)
-            process = subprocess.run(command)
-            run_counter += 1
-        logging.info('Completed!')
+        if not multiecho:
+            run_counter = 1
+            for func_input in self.pdict['func']:
+                func_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_bold'
+                self.func_name.append(func_name)
+                command = ['dcm2niix', '-z', 'n', '-f', func_name, '-b', 'y', '-o', self.func_path, func_input]
+                #print(command)
+                process = subprocess.run(command)
+                run_counter += 1
+        elif multiecho:
+            run_counter = 1
+            for func_input in self.pdict['func']:
+                echo_counter = 1
+                for echo_input in func_input['echo']:
+                    echo_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_echo-{str(echo_counter)}_bold'
+                    self.func_name.append(echo_name)
+                    command = ['dcm2niix', '-z', 'n', '-f', 'temp', '-b', 'y', '-o', self.func_path, echo_input]
+                    #print(command)
+                    if not os.path.exists(f'{self.func_path}/{echo_name}.nii'):
+                        process = subprocess.run(command)
+                        to_rename = glob.glob(f"{self.func_path}*temp*.nii")[0]
+                        os.rename(to_rename, f'{self.func_path}/{echo_name}.nii')
+                        to_rename = glob.glob(f"{self.func_path}*temp*.json")[0]
+                        os.rename(to_rename, f'{self.func_path}/{echo_name}.json') 
+                    else:
+                        logging.warning(f'{echo_name} exists! Not overwriting.')
 
+                    echo_counter += 1
+                run_counter += 1
+        logging.info('Completed!')
+    
 
     def update_json(self):
         # Add TaskName field to BIDS functional NIFTI sidecars
@@ -158,7 +201,7 @@ class FmriprepDockerPipeline(object):
 
 class FmriprepSingularityPipeline(object):
 
-    def __init__(self, subs, bids_root, output, fs_license, freesurfer, minerva_options, singularity_batch_created=False):
+    def __init__(self, subs, bids_root, output, fs_license, freesurfer, minerva_options, singularity_batch_created=False, multiecho=False):
         self.subs = subs
         self.bids_root = bids_root
         self.output = output
@@ -167,6 +210,7 @@ class FmriprepSingularityPipeline(object):
         self.minerva_options = minerva_options
         self.batch_dir = minerva_options['batch_dir']
         self.singularity_batch_created = singularity_batch_created
+        self.multiecho = multiecho
 
     def create_singularity_batch(self):
         logging.info('Setting up fmriprep command through Singularity for Minerva')
@@ -203,6 +247,8 @@ class FmriprepSingularityPipeline(object):
                 if not self.freesurfer:
                    command = " ".join([command, '--fs-no-reconall'])
                 f.write(command)
+                if multiecho:
+                    command = " ".join([command, '--ignore slicetiming'])
 
         self.minerva_options['subs'] = self.subs
         self.minerva_options['bids_root'] = self.bids_root
@@ -219,11 +265,4 @@ class FmriprepSingularityPipeline(object):
         logging.info('Submitting singularity batch scripts to the private queue')
         if self.singularity_batch_created:
             for sub in self.subs:
-                subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh')
-                time.sleep(60)
-
-
-
-def motionreg(subs):
-    # Run either GLM regression or ART repair for motion
-    pass
+                subprocess.run(f'bsub
