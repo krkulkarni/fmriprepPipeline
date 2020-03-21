@@ -37,7 +37,7 @@ def create_bids_root(bids_root, description="This is a default description"):
     else:
         print('Root exists! Not overwriting.')
 
-        
+
 class SetupBIDSPipeline(object):
 
     #
@@ -90,7 +90,7 @@ class SetupBIDSPipeline(object):
         # Create the logging file in the progress directory
         x = datetime.datetime.now()
         timestamp = x.strftime("%m-%d_%H%M")
-        self.logfile = f'{self.progress_dir}/log_{timestamp}.txt'
+        #self.logfile = f'{self.progress_dir}/log_{timestamp}.txt'
         logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
         # Initialize paths for BIDS-formatted folders and files
@@ -262,7 +262,8 @@ def run_fmriprep_docker(bids_root, output, fs_license, freesurfer=False):
 
 class FmriprepSingularityPipeline(object):
 
-    def __init__(self, subs, bids_root, output, fs_license, freesurfer, minerva_options, singularity_batch_created=False, multiecho=False):
+    def __init__(self, subs, bids_root, output, fs_license, minerva_options, freesurfer=False, multiecho=False):
+        # Define class variables
         self.subs = subs
         self.bids_root = bids_root
         self.output = output
@@ -270,63 +271,84 @@ class FmriprepSingularityPipeline(object):
         self.freesurfer = freesurfer
         self.minerva_options = minerva_options
         self.batch_dir = minerva_options['batch_dir']
-        self.singularity_batch_created = singularity_batch_created
         self.multiecho = multiecho
 
     def create_singularity_batch(self):
         logging.info('Setting up fmriprep command through Singularity for Minerva')
         
-        # if not os.path.isfile(f'{minerva_options["image_directory"]}/fmriprep-20.0.1.simg'):
-        #     logging.error('fmriprep image does not exist in the given directory!')
+        # Check if the singularity image exists in the image location
+        if not os.path.isfile(f'{minerva_options["image_location"]}/fmriprep-20.0.1.simg'):
+            logging.error('fmriprep image does not exist in the given directory!')
         #     raise OSError('fmriprep image does not exist in the given directory!')
 
+        # Create the specified batch directory folder if it doesn't exist
         logging.info('Creating batch directory for subject scripts')
         if not os.path.isdir(self.batch_dir):
             os.makedirs(self.batch_dir)
+        # Create the batchoutput folder within the batch directory folder
+        # This will hold the outputs from each of the batch scripts
         if not os.path.isdir(f'{self.batch_dir}/batchoutput'):
             os.makedirs(f'{self.batch_dir}/batchoutput')
 
+        # Loop over all subjects
         for sub in self.subs:
+
+            # Strip the 'sub-' prefix from the subject name string, if it's there
+            if sub[:4] == 'sub-':
+                sub = sub[4:]
+
+            # Create the subject specific batch script
             sub_batch_script = f'{self.batch_dir}/sub-{sub}.sh'
             with open(sub_batch_script, 'w') as f:
                 lines = [
-                f'#!/bin/bash\n\n',
-                f'#BSUB -J fmriprep_sub-{sub}\n',
-                f'#BSUB -P acc_guLab\n',
-                f'#BSUB -q private\n',
-                f'#BSUB -n 4\n',
-                f'#BSUB -W 20:00\n',
-                f'#BSUB -R rusage[mem=16000]\n',
-                f'#BSUB -o {self.batch_dir}/batchoutput/nodejob-fmriprep-sub-{sub}.out\n',
-                f'#BSUB -L /bin/bash\n\n',
-                f'ml singularity/3.2.1\n\n',
-                f'cd {self.minerva_options["image_directory"]}\n',
+                    # These are the BSUB cookies
+                    f'#!/bin/bash\n\n',
+                    f'#BSUB -J fmriprep_sub-{sub}\n',
+                    f'#BSUB -P acc_guLab\n',
+                    f'#BSUB -q private\n',
+                    f'#BSUB -n 4\n',
+                    f'#BSUB -W 20:00\n',
+                    f'#BSUB -R rusage[mem=16000]\n',
+                    f'#BSUB -o {self.batch_dir}/batchoutput/nodejob-fmriprep-sub-{sub}.out\n',
+                    f'#BSUB -L /bin/bash\n\n',
+                    # Module load singularity
+                    f'ml singularity/3.2.1\n\n',
+                    # Enter the directory that contains the fmriprep.20.0.1.simg
+                    f'cd {self.minerva_options["image_location"]}\n',
                 ]
                 f.writelines(lines)
 
-                command = f'singularity run --home {self.minerva_options["hpc_home"]} --cleanenv fmriprep-20.0.1.simg {self.bids_root} {self.output} participant --participant-label {sub} --notrack --fs-license-file {self.fs_license}'
+                # Create the command
+                command = f'singularity run --home {self.minerva_options["hpc_home"]} \
+                            --cleanenv fmriprep-20.0.1.simg {self.bids_root} {self.output} participant \
+                            --participant-label {sub} --notrack --fs-license-file {self.fs_license}'
+                # Ignore freesurfer if specified
                 if not self.freesurfer:
                    command = " ".join([command, '--fs-no-reconall'])
-                f.write(command)
-                if multiecho:
+                # Ignore slice timing for multiecho data
+                if self.multiecho:
                     command = " ".join([command, '--ignore slicetiming'])
+                # Output command to batch script
+                f.write(command)
 
+        # Include all variables in the 'minerva_option' dictionary
         self.minerva_options['subs'] = self.subs
         self.minerva_options['bids_root'] = self.bids_root
         self.minerva_options['output'] = self.output
         self.minerva_options['freesurfer'] = self.freesurfer
 
+        # Save all parameters within the batch directory as well
         with open(f'{self.batch_dir}/minerva_options.json', 'w') as f:
             json.dump(self.minerva_options, f) 
-
-        self.singularity_batch_created = True
 
 
     def run_singularity_batch(self):
         logging.info('Submitting singularity batch scripts to the private queue')
         if self.singularity_batch_created:
             for sub in self.subs:
+                # Submit job to scheduler
                 subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh')
+                # Sleep for 1 min between job submissions (recommended)
                 time.sleep(60)
 
 

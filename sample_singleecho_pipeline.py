@@ -27,6 +27,7 @@ if __name__ == "__main__":
 
     # Define dicom structure
     # Note that 'func' is a 1D array of dicom folder names for single echo
+    multiecho=False
     anat = 'anat'
     func = [ 
         'session1',
