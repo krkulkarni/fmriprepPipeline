@@ -17,8 +17,10 @@ conda install -c conda-forge dcm2niix
 ## Usage
 
 ```bash
-python bids_scaffold.py -p parameters.json
+python sample_singleecho_pipeline.py
 ```
+
+See the sample_singleecho_pipeline.py and sample_multiecho_pipeline.py files for further annotation.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
@@ -33,3 +35,4 @@ Please make sure to update tests as appropriate.
 * **Kaustubh Kulkarni** - *Initial work* - [More Info](https://kulkarnik.com)
 
 See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
+
