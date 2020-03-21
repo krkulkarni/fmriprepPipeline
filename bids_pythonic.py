@@ -11,6 +11,33 @@ import logging
 import datetime
 import time
 
+
+def create_bids_root(bids_root, description="This is a default description"):
+    # Create root directory
+    # Create dataset_description.json and README
+    if not os.path.isdir(bids_root):
+        os.makedirs(bids_root)
+        ds_desc =   {
+                "Name": description,
+                "BIDSVersion": "1.0.1",
+                "License": "CC0",
+                "Authors": [
+                    "Kaustubh Kulkarni",
+                    "Matt Schafer"
+                ],
+                "DatasetDOI": "10.0.2.3/dfjj.10"
+                }
+        dd_path = f'{bids_root}/dataset_description.json'
+        print(dd_path)
+        with open(dd_path, 'w') as outfile:
+            json.dump(ds_desc, outfile)
+        readme_path = f'{bids_root}/README'
+        with open(readme_path, 'w') as outfile:
+            outfile.write('This is a README')
+    else:
+        print('Root exists! Not overwriting.')
+
+        
 class SetupBIDSPipeline(object):
 
     #
@@ -20,11 +47,11 @@ class SetupBIDSPipeline(object):
     def __init__(self, dicom_dir, name, anat, func, task, root, 
         multiecho=False, ignore=False, overwrite=False, progress_dir=f'{os.getcwd()}/fpprogress/'):
         
-        # Create the fmriprepPipeline progress directory if it doesn't exist 
-        # This folder holds the current progress 
-        if not os.path.exists(progress_dir):
-            os.makedirs(progress_dir)
-        self.progress_dir = progress_dir
+        ### Create the fmriprepPipeline progress directory if it doesn't exist 
+        ### This folder holds the current progress 
+        # if not os.path.exists(progress_dir):
+        #     os.makedirs(progress_dir)
+        # self.progress_dir = progress_dir
 
         # Strip 'sub-' from name
         if name[:4] == 'sub-':
@@ -301,32 +328,6 @@ class FmriprepSingularityPipeline(object):
             for sub in self.subs:
                 subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh')
                 time.sleep(60)
-
-
-def create_bids_root(bids_root, description="This is a default description"):
-    # Create root directory
-    # Create dataset_description.json and README
-    if not os.path.isdir(bids_root):
-        os.makedirs(bids_root)
-        ds_desc =   {
-                "Name": description,
-                "BIDSVersion": "1.0.1",
-                "License": "CC0",
-                "Authors": [
-                    "Kaustubh Kulkarni",
-                    "Matt Schafer"
-                ],
-                "DatasetDOI": "10.0.2.3/dfjj.10"
-                }
-        dd_path = f'{bids_root}/dataset_description.json'
-        print(dd_path)
-        with open(dd_path, 'w') as outfile:
-            json.dump(ds_desc, outfile)
-        readme_path = f'{bids_root}/README'
-        with open(readme_path, 'w') as outfile:
-            outfile.write('This is a README')
-    else:
-        print('Root exists! Not overwriting.')
 
 
 def motionreg(subs):
