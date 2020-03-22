@@ -52,7 +52,8 @@ if __name__ == "__main__":
     minerva_options = {
         'image_location': image_location,
         'batch_dir': batch_dir,
-        'hpc_home': hpc_home
+        'hpc_home': hpc_home,
+        'project_dir': project_dir
     }
 
     # This method creates the bids root directory

@@ -59,8 +59,8 @@ class SetupBIDSPipeline(object):
         logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
         # Strip 'sub-' from name
-        if name[:4] == 'sub-':
-            name = name[4:]
+        # if name[:4] == 'sub-':
+        #     name = name[4:]
 
         # Pdict variable contains all the major variables for BIDS folder setup
         # Field         |           value                                               |
@@ -79,9 +79,15 @@ class SetupBIDSPipeline(object):
         # Uses glob to match wildcards, but throws error if there are multiple matches
         self.pdict = {}
         self.pdict['root'] = root
-        self.pdict['name'] = name
         self.pdict['task'] = task
         self.pdict['multiecho'] = multiecho
+
+        # Use strip 'sub-' from name if it exists
+        # The 'sub-' will be added later for BIDS formatting
+        if name.startswith('sub-'):
+            self.pdict['name'] = name[4:]
+        else:
+            self.pdict['name'] = name
         
         # Wildcard matching for anatomical dicom directory name
         match = glob.glob(f"{dicom_dir}/{name}/{anat}/")
@@ -136,7 +142,7 @@ class SetupBIDSPipeline(object):
         # Validate that BIDS root directory exists!
         # This directory is created by the 'create_bids_root' function below!
         if os.path.isdir(self.pdict['root']):
-            logging.warning('Root Exists!')
+            logging.info('Root Exists.')
             self.root_exists = True
         else:
             logging.error('Root does not exist!')
@@ -303,7 +309,7 @@ class FmriprepSingularityPipeline(object):
         logging.info('Setting up fmriprep command through Singularity for Minerva')
         
         # Check if the singularity image exists in the image location
-        if not os.path.isfile(f'{minerva_options["image_location"]}/fmriprep-20.0.1.simg'):
+        if not os.path.isfile(f'{self.minerva_options["image_location"]}/fmriprep-20.0.1.simg'):
             logging.error('fmriprep image does not exist in the given directory!')
         #     raise OSError('fmriprep image does not exist in the given directory!')
 
@@ -340,20 +346,22 @@ class FmriprepSingularityPipeline(object):
                     # Module load singularity
                     f'ml singularity/3.2.1\n\n',
                     # Enter the directory that contains the fmriprep.20.0.1.simg
-                    f'cd {self.minerva_options["image_location"]}\n',
+                    f'cd {self.minerva_options["project_dir"]}\n',
                 ]
                 f.writelines(lines)
 
                 # Create the command
-                command = f'singularity run --home {self.minerva_options["hpc_home"]} \
-                            --cleanenv fmriprep-20.0.1.simg {self.bids_root} {self.output} participant \
-                            --participant-label {sub} --notrack --fs-license-file {self.fs_license}'
+                command = f"singularity run --home {self.minerva_options['hpc_home']} \
+                            -B {self.minerva_options['image_location']}:/software \
+                            --cleanenv {self.minerva_options['image_location']}/fmriprep-20.0.1.simg \
+                            {self.bids_root} {self.output} participant \
+                            --participant-label {sub} --notrack --fs-license-file /software/license.txt"
                 # Ignore freesurfer if specified
                 if not self.freesurfer:
                    command = " ".join([command, '--fs-no-reconall'])
                 # Ignore slice timing for multiecho data
                 if self.multiecho:
-                    command = " ".join([command, '--ignore slicetiming'])
+                    command = " ".join([command, '--ignore slicetiming --skip-bids-validation'])
                 # Output command to batch script
                 f.write(command)
 
