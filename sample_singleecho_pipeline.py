@@ -30,8 +30,8 @@ if __name__ == "__main__":
     multiecho=False
     anat = 'anat'
     func = [ 
-        'session1',
-        'session2'
+        '*sess*1',
+        '*sess*2'
     ]
 
     # Define task name for selected functional data

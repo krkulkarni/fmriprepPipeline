@@ -2,11 +2,9 @@
 # Author: Kaustubh Kulkarni
 # Date: Feb 20, 2020
 
-import argparse
 import json
-import os, glob
+import os, glob, shutil
 import subprocess
-import shutil
 import logging
 import datetime
 import time
@@ -23,7 +21,8 @@ def create_bids_root(bids_root, description="This is a default description"):
                 "License": "CC0",
                 "Authors": [
                     "Kaustubh Kulkarni",
-                    "Matt Schafer"
+                    "Daniela Schiller",
+                    "Xiaosi Gu"
                 ],
                 "DatasetDOI": "10.0.2.3/dfjj.10"
                 }
@@ -33,7 +32,7 @@ def create_bids_root(bids_root, description="This is a default description"):
             json.dump(ds_desc, outfile)
         readme_path = f'{bids_root}/README'
         with open(readme_path, 'w') as outfile:
-            outfile.write('This is a README')
+            outfile.write('This is a README. Replace with your README information')
     else:
         print('Root exists! Not overwriting.')
 
@@ -53,6 +52,12 @@ class SetupBIDSPipeline(object):
         #     os.makedirs(progress_dir)
         # self.progress_dir = progress_dir
 
+                # Create the logging file in the progress directory
+        x = datetime.datetime.now()
+        timestamp = x.strftime("%m-%d_%H%M")
+        #self.logfile = f'{self.progress_dir}/log_{timestamp}.txt'
+        logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
+
         # Strip 'sub-' from name
         if name[:4] == 'sub-':
             name = name[4:]
@@ -70,28 +75,49 @@ class SetupBIDSPipeline(object):
 
         # Note that for func, if the data is single echo, there is a array of runs
         # and for multiecho data it is an array of arrays of echoes for each run
+
+        # Uses glob to match wildcards, but throws error if there are multiple matches
         self.pdict = {}
         self.pdict['root'] = root
         self.pdict['name'] = name
-        self.pdict['anat'] = f"{dicom_dir}/{name}/{anat}/"
         self.pdict['task'] = task
         self.pdict['multiecho'] = multiecho
+        
+        # Wildcard matching for anatomical dicom directory name
+        match = glob.glob(f"{dicom_dir}/{name}/{anat}/")
+        if len(match) ==1:
+            logging.info(f'{anat} has a match: {match[0]}')
+            self.pdict['anat'] = match[0]
+        else:
+            logging.error(f'{anat} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+            raise OSError(f'{anat} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+        
+        # Wildcard matching for function dicom directory name
+        self.pdict['func'] = []
         if not multiecho:
-            self.pdict['func'] = [f"{dicom_dir}/{name}/{one_func}/" for one_func in func]
+            for one_func in func:
+                match = glob.glob(f"{dicom_dir}/{name}/{one_func}/")
+                if len(match) ==1:
+                    logging.info(f'{one_func} has a match: {match[0]}')
+                    self.pdict['func'].append(match[0])
+                else:
+                    logging.error(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                    raise OSError(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
         elif multiecho:
-            self.pdict['func'] = []
             for run in func:
-                run_arr = [f"{dicom_dir}/{name}/{one_func}/" for one_func in run]
+                run_arr = []
+                for one_func in run:
+                    match = glob.glob(f"{dicom_dir}/{name}/{one_func}/")
+                    if len(match) ==1:
+                        logging.info(f'{one_func} has a match: {match[0]}')
+                        run_arr.append(match[0])
+                    else:
+                        logging.error(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                        raise OSError(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
                 self.pdict['func'].append(run_arr)
+
         self.pdict['overwrite'] = overwrite
         self.pdict['ignore'] = ignore
-
-
-        # Create the logging file in the progress directory
-        x = datetime.datetime.now()
-        timestamp = x.strftime("%m-%d_%H%M")
-        #self.logfile = f'{self.progress_dir}/log_{timestamp}.txt'
-        logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
         # Initialize paths for BIDS-formatted folders and files
         # anat_path     ->  path to BIDS anat folder
@@ -352,6 +378,6 @@ class FmriprepSingularityPipeline(object):
                 time.sleep(60)
 
 
-def motionreg(subs):
-    # Run either GLM regression or ART repair for motion
-    pass
+# def motionreg(subs):
+#     # Run either GLM regression or ART repair for motion
+#     pass
