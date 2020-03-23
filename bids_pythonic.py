@@ -356,6 +356,7 @@ class FmriprepSingularityPipeline(object):
                             --cleanenv {self.minerva_options['image_location']}/fmriprep-20.0.1.simg \
                             {self.bids_root} {self.output} participant \
                             --participant-label {sub} --notrack --fs-license-file /software/license.txt"
+                command = " ".join(command.split())
                 # Ignore freesurfer if specified
                 if not self.freesurfer:
                    command = " ".join([command, '--fs-no-reconall'])

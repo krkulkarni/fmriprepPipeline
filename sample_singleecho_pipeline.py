@@ -14,6 +14,10 @@ You can adapt this script for your use or build your own.
 """
 
 
+# Note that the fmriprepPipeline/ folder needs to be added to the PYTHONPATH
+#
+# Add the command: export PYTHONPATH=${PYTHONPATH}:<location-of-fmriprepPipeline>
+# to your ~/.bash_profile file and source it
 import bids_pythonic as bp
 
 if __name__ == "__main__":

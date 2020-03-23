@@ -8,13 +8,16 @@ Here is an example script that utilizes the bids_pythonic module
 to build the BIDS formatted database and execute fmriprep using either
 fmriprep-docker (for local usage) or singularity (minerva usage)
 
-Examples of both single echo and multi echo are shown.
+Examples of both single echo and multi echo are provided.
 
 You can adapt this script for your use or build your own.
 
 """
 
-
+# Note that the fmriprepPipeline/ folder needs to be added to the PYTHONPATH
+#
+# Add the command: export PYTHONPATH=${PYTHONPATH}:<location-of-fmriprepPipeline>
+# to your ~/.bash_profile file and source it
 import bids_pythonic as bp
 
 if __name__ == "__main__":
@@ -29,7 +32,7 @@ if __name__ == "__main__":
     
     # Define your list of subjects
     # If 'sub-' is at the start of the subject string, it will be removed
-    subs = ['sub-02']
+    subs = ['02']
 
     # Define dicom structure
     # Note that 'func' is a 2D list of lists, of all echos for each run
