@@ -70,6 +70,8 @@ setup.update_json()
 bp.run_fmriprep_docker(bids_root, output_dir, fs_license)
 ```
 
+Loop over an array of subs to create a `setup` object for each one and run all `setup` object functions. 
+`bp.run_fmriprep_docker` only needs to be run once on the BIDS root.
 See the sample_singleecho_pipeline.py and sample_multiecho_pipeline.py files for further annotation.
 
 ## Parameters
