@@ -29,6 +29,8 @@ Note the directory in which the image is located. This is your 'image_directory'
 ## Usage
 
 ```python
+import bids_pythonic as bp
+
 # Define your path names
 fs_license = '/path/to/license.txt'
 project_dir = '/path/to/project/'
@@ -68,6 +70,8 @@ setup.update_json()
 bp.run_fmriprep_docker(bids_root, output_dir, fs_license)
 ```
 
+Loop over an array of subs to create a `setup` object for each one and run all `setup` object functions. 
+`bp.run_fmriprep_docker` only needs to be run once on the BIDS root.
 See the sample_singleecho_pipeline.py and sample_multiecho_pipeline.py files for further annotation.
 
 ## Parameters
@@ -84,6 +88,7 @@ See the sample_singleecho_pipeline.py and sample_multiecho_pipeline.py files for
 | `root` | Path name for the BIDS root directory you would like to create |
 | `ignore=False` | If ignore is set to True, no error is generated if the subject folder exists in the BIDS root |
 | `overwrite=False` | If overwrite is True, existing subject folders will be deleted in the BIDS root |
+| `multiecho=False` | If multiecho is True, `func` must be inputted as an array of arrays. Each element array contains paths to all the echoes that belong to that run |
 
 ### run_fmriprep_docker function
 
@@ -122,9 +127,9 @@ Please make sure to update tests as appropriate.
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
 
-## Authors
+## Author
 
-* **Kaustubh Kulkarni** - *Initial work* - [More Info](https://kulkarnik.com)
+* **Kaustubh Kulkarni** - *Development, maintenance* - [More Info](https://kulkarnik.com)
 
 See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
 
