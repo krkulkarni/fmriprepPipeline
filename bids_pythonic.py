@@ -309,7 +309,7 @@ class FmriprepSingularityPipeline(object):
         logging.info('Setting up fmriprep command through Singularity for Minerva')
         
         # Check if the singularity image exists in the image location
-        if not os.path.isfile(f'{self.minerva_options["image_location"]}/fmriprep-20.0.1.simg'):
+        if not os.path.isfile(f'{self.minerva_options["image_location"]}/fmriprep-20.0.5.simg'):
             logging.error('fmriprep image does not exist in the given directory!')
         #     raise OSError('fmriprep image does not exist in the given directory!')
 
@@ -351,9 +351,9 @@ class FmriprepSingularityPipeline(object):
                 f.writelines(lines)
 
                 # Create the command
-                command = f"singularity run --home {self.minerva_options['hpc_home']} \
+                command = f"singularity run -B $HOME:/home --home /home \
                             -B {self.minerva_options['image_location']}:/software \
-                            --cleanenv {self.minerva_options['image_location']}/fmriprep-20.0.1.simg \
+                            --cleanenv {self.minerva_options['image_location']}/fmriprep-20.0.5.simg \
                             {self.bids_root} {self.output} participant \
                             --participant-label {sub} --notrack --fs-license-file /software/license.txt"
                 command = " ".join(command.split())
