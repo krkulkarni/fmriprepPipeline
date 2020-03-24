@@ -127,9 +127,9 @@ Please make sure to update tests as appropriate.
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
 
-## Authors
+## Author
 
-* **Kaustubh Kulkarni** - *Initial work* - [More Info](https://kulkarnik.com)
+* **Kaustubh Kulkarni** - *Development, maintenance* - [More Info](https://kulkarnik.com)
 
 See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
 
