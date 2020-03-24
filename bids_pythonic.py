@@ -288,8 +288,8 @@ def run_fmriprep_docker(bids_root, output, fs_license, freesurfer=False):
     command = ['fmriprep-docker', bids_root, output, 'participant', '--fs-license-file', fs_license]
     if not freesurfer:
         command.append('--fs-no-reconall')
-    logging.info(command)
-    #subprocess.run(command)
+    #logging.info(command)
+    subprocess.run(command)
 
 
 class FmriprepSingularityPipeline(object):

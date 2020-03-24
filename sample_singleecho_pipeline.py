@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     # Define your list of subjects
     # If 'sub-' is at the start of the subject string, it will be removed
-    subs = ['sub-01']
+    subs = ['01']
 
     # This method creates the bids root directory
     bp.create_bids_root(bids_root)

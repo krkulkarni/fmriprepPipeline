@@ -63,9 +63,9 @@ if __name__ == "__main__":
 
     for name in subs:
         setup = bp.SetupBIDSPipeline(dicom_dir, name, anat, func, task, bids_root, ignore=True, multiecho=multiecho_flag)
-        setup.validate(multiecho=multiecho)
+        setup.validate(multiecho=multiecho_flag)
         setup.create_bids_hierarchy()
-        setup.convert(multiecho=multiecho)
+        setup.convert(multiecho=multiecho_flag)
         setup.update_json()
 
     fp_singularity = bp.FmriprepSingularityPipeline(subs, bids_root, output_dir, minerva_options, multiecho=multiecho_flag)
