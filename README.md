@@ -86,6 +86,7 @@ See the sample_singleecho_pipeline.py and sample_multiecho_pipeline.py files for
 | `root` | Path name for the BIDS root directory you would like to create |
 | `ignore=False` | If ignore is set to True, no error is generated if the subject folder exists in the BIDS root |
 | `overwrite=False` | If overwrite is True, existing subject folders will be deleted in the BIDS root |
+| `multiecho=False` | If multiecho is True, `func` must be inputted as an array of arrays. Each element array contains paths to all the echoes that belong to that run |
 
 ### run_fmriprep_docker function
 
