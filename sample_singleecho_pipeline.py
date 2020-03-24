@@ -14,6 +14,10 @@ You can adapt this script for your use or build your own.
 """
 
 
+# Note that the fmriprepPipeline/ folder needs to be added to the PYTHONPATH
+#
+# Add the command: export PYTHONPATH=${PYTHONPATH}:<location-of-fmriprepPipeline>
+# to your ~/.bash_profile file and source it
 import bids_pythonic as bp
 
 if __name__ == "__main__":
@@ -30,8 +34,8 @@ if __name__ == "__main__":
     multiecho=False
     anat = 'anat'
     func = [ 
-        'session1',
-        'session2'
+        '*sess*1',
+        '*sess*2'
     ]
 
     # Define task name for selected functional data
@@ -39,7 +43,7 @@ if __name__ == "__main__":
 
     # Define your list of subjects
     # If 'sub-' is at the start of the subject string, it will be removed
-    subs = ['sub-01']
+    subs = ['01']
 
     # This method creates the bids root directory
     bp.create_bids_root(bids_root)

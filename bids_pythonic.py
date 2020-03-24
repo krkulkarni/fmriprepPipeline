@@ -2,11 +2,9 @@
 # Author: Kaustubh Kulkarni
 # Date: Feb 20, 2020
 
-import argparse
 import json
-import os, glob
+import os, glob, shutil
 import subprocess
-import shutil
 import logging
 import datetime
 import time
@@ -23,7 +21,8 @@ def create_bids_root(bids_root, description="This is a default description"):
                 "License": "CC0",
                 "Authors": [
                     "Kaustubh Kulkarni",
-                    "Matt Schafer"
+                    "Daniela Schiller",
+                    "Xiaosi Gu"
                 ],
                 "DatasetDOI": "10.0.2.3/dfjj.10"
                 }
@@ -33,7 +32,7 @@ def create_bids_root(bids_root, description="This is a default description"):
             json.dump(ds_desc, outfile)
         readme_path = f'{bids_root}/README'
         with open(readme_path, 'w') as outfile:
-            outfile.write('This is a README')
+            outfile.write('This is a README. Replace with your README information')
     else:
         print('Root exists! Not overwriting.')
 
@@ -53,9 +52,15 @@ class SetupBIDSPipeline(object):
         #     os.makedirs(progress_dir)
         # self.progress_dir = progress_dir
 
+                # Create the logging file in the progress directory
+        x = datetime.datetime.now()
+        timestamp = x.strftime("%m-%d_%H%M")
+        #self.logfile = f'{self.progress_dir}/log_{timestamp}.txt'
+        logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
+
         # Strip 'sub-' from name
-        if name[:4] == 'sub-':
-            name = name[4:]
+        # if name[:4] == 'sub-':
+        #     name = name[4:]
 
         # Pdict variable contains all the major variables for BIDS folder setup
         # Field         |           value                                               |
@@ -70,28 +75,55 @@ class SetupBIDSPipeline(object):
 
         # Note that for func, if the data is single echo, there is a array of runs
         # and for multiecho data it is an array of arrays of echoes for each run
+
+        # Uses glob to match wildcards, but throws error if there are multiple matches
         self.pdict = {}
         self.pdict['root'] = root
-        self.pdict['name'] = name
-        self.pdict['anat'] = f"{dicom_dir}/{name}/{anat}/"
         self.pdict['task'] = task
         self.pdict['multiecho'] = multiecho
+
+        # Use strip 'sub-' from name if it exists
+        # The 'sub-' will be added later for BIDS formatting
+        if name.startswith('sub-'):
+            self.pdict['name'] = name[4:]
+        else:
+            self.pdict['name'] = name
+        
+        # Wildcard matching for anatomical dicom directory name
+        match = glob.glob(f"{dicom_dir}/{name}/{anat}/")
+        if len(match) ==1:
+            logging.info(f'{anat} has a match: {match[0]}')
+            self.pdict['anat'] = match[0]
+        else:
+            logging.error(f'{anat} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+            raise OSError(f'{anat} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+        
+        # Wildcard matching for function dicom directory name
+        self.pdict['func'] = []
         if not multiecho:
-            self.pdict['func'] = [f"{dicom_dir}/{name}/{one_func}/" for one_func in func]
+            for one_func in func:
+                match = glob.glob(f"{dicom_dir}/{name}/{one_func}/")
+                if len(match) ==1:
+                    logging.info(f'{one_func} has a match: {match[0]}')
+                    self.pdict['func'].append(match[0])
+                else:
+                    logging.error(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                    raise OSError(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
         elif multiecho:
-            self.pdict['func'] = []
             for run in func:
-                run_arr = [f"{dicom_dir}/{name}/{one_func}/" for one_func in run]
+                run_arr = []
+                for one_func in run:
+                    match = glob.glob(f"{dicom_dir}/{name}/{one_func}/")
+                    if len(match) ==1:
+                        logging.info(f'{one_func} has a match: {match[0]}')
+                        run_arr.append(match[0])
+                    else:
+                        logging.error(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                        raise OSError(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
                 self.pdict['func'].append(run_arr)
+
         self.pdict['overwrite'] = overwrite
         self.pdict['ignore'] = ignore
-
-
-        # Create the logging file in the progress directory
-        x = datetime.datetime.now()
-        timestamp = x.strftime("%m-%d_%H%M")
-        #self.logfile = f'{self.progress_dir}/log_{timestamp}.txt'
-        logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
         # Initialize paths for BIDS-formatted folders and files
         # anat_path     ->  path to BIDS anat folder
@@ -110,7 +142,7 @@ class SetupBIDSPipeline(object):
         # Validate that BIDS root directory exists!
         # This directory is created by the 'create_bids_root' function below!
         if os.path.isdir(self.pdict['root']):
-            logging.warning('Root Exists!')
+            logging.info('Root Exists.')
             self.root_exists = True
         else:
             logging.error('Root does not exist!')
@@ -256,18 +288,17 @@ def run_fmriprep_docker(bids_root, output, fs_license, freesurfer=False):
     command = ['fmriprep-docker', bids_root, output, 'participant', '--fs-license-file', fs_license]
     if not freesurfer:
         command.append('--fs-no-reconall')
-    logging.info(command)
-    #subprocess.run(command)
+    #logging.info(command)
+    subprocess.run(command)
 
 
 class FmriprepSingularityPipeline(object):
 
-    def __init__(self, subs, bids_root, output, fs_license, minerva_options, freesurfer=False, multiecho=False):
+    def __init__(self, subs, bids_root, output, minerva_options, freesurfer=False, multiecho=False):
         # Define class variables
         self.subs = subs
         self.bids_root = bids_root
         self.output = output
-        self.fs_license = fs_license
         self.freesurfer = freesurfer
         self.minerva_options = minerva_options
         self.batch_dir = minerva_options['batch_dir']
@@ -277,7 +308,7 @@ class FmriprepSingularityPipeline(object):
         logging.info('Setting up fmriprep command through Singularity for Minerva')
         
         # Check if the singularity image exists in the image location
-        if not os.path.isfile(f'{minerva_options["image_location"]}/fmriprep-20.0.1.simg'):
+        if not os.path.isfile(f'{self.minerva_options["image_location"]}/fmriprep-20.0.5.simg'):
             logging.error('fmriprep image does not exist in the given directory!')
         #     raise OSError('fmriprep image does not exist in the given directory!')
 
@@ -314,20 +345,23 @@ class FmriprepSingularityPipeline(object):
                     # Module load singularity
                     f'ml singularity/3.2.1\n\n',
                     # Enter the directory that contains the fmriprep.20.0.1.simg
-                    f'cd {self.minerva_options["image_location"]}\n',
+                    f'cd {self.minerva_options["project_dir"]}\n',
                 ]
                 f.writelines(lines)
 
                 # Create the command
-                command = f'singularity run --home {self.minerva_options["hpc_home"]} \
-                            --cleanenv fmriprep-20.0.1.simg {self.bids_root} {self.output} participant \
-                            --participant-label {sub} --notrack --fs-license-file {self.fs_license}'
+                command = f"singularity run -B $HOME:/home --home /home \
+                            -B {self.minerva_options['image_location']}:/software \
+                            --cleanenv {self.minerva_options['image_location']}/fmriprep-20.0.5.simg \
+                            {self.bids_root} {self.output} participant \
+                            --participant-label {sub} --notrack --fs-license-file /software/license.txt"
+                command = " ".join(command.split())
                 # Ignore freesurfer if specified
                 if not self.freesurfer:
                    command = " ".join([command, '--fs-no-reconall'])
                 # Ignore slice timing for multiecho data
                 if self.multiecho:
-                    command = " ".join([command, '--ignore slicetiming'])
+                    command = " ".join([command, '--ignore slicetiming --skip-bids-validation'])
                 # Output command to batch script
                 f.write(command)
 
@@ -352,6 +386,6 @@ class FmriprepSingularityPipeline(object):
                 time.sleep(60)
 
 
-def motionreg(subs):
-    # Run either GLM regression or ART repair for motion
-    pass
+# def motionreg(subs):
+#     # Run either GLM regression or ART repair for motion
+#     pass
