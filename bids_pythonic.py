@@ -294,12 +294,11 @@ def run_fmriprep_docker(bids_root, output, fs_license, freesurfer=False):
 
 class FmriprepSingularityPipeline(object):
 
-    def __init__(self, subs, bids_root, output, fs_license, minerva_options, freesurfer=False, multiecho=False):
+    def __init__(self, subs, bids_root, output, minerva_options, freesurfer=False, multiecho=False):
         # Define class variables
         self.subs = subs
         self.bids_root = bids_root
         self.output = output
-        self.fs_license = fs_license
         self.freesurfer = freesurfer
         self.minerva_options = minerva_options
         self.batch_dir = minerva_options['batch_dir']
