@@ -29,6 +29,8 @@ Note the directory in which the image is located. This is your 'image_directory'
 ## Usage
 
 ```python
+import bids_pythonic as bp
+
 # Define your path names
 fs_license = '/path/to/license.txt'
 project_dir = '/path/to/project/'
