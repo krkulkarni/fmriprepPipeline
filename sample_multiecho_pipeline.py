@@ -36,11 +36,11 @@ if __name__ == "__main__":
     # Define dicom structure
     # Note that 'func' is a 2D list of lists, of all echos for each run
     multiecho_flag = True
-    anat = 'anat'
+    anat = '*UNI-DEN*'
     func = [ 
         [
-            'task-fish_run-1_echo-1',
-            'task-fish_run-1_echo-2'
+            '*FISH*Echo_0*',
+            '*FISH*Echo_1'
         ]
     ]
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     # Define the minerva options    
     image_location = f'{project_dir}' # where is the fmriprep.20.0.1.simg file located?
     # Note: the image location must contain the freesurfer 'license.txt' in it!
-    batch_dir = f'{project_dir}/batch_dir/' # output directory for all batch scripts
+    batch_dir = f'{project_dir}/multiecho_rawdata/batch_dir/' # output directory for all batch scripts
     hpc_home = '/hpc/home/kulkak01/' # replace this with your own username on Minerva
     minerva_options = {
         'image_location': image_location,
@@ -70,4 +70,4 @@ if __name__ == "__main__":
 
     fp_singularity = bp.FmriprepSingularityPipeline(subs, bids_root, output_dir, minerva_options, multiecho=multiecho_flag)
     fp_singularity.create_singularity_batch()
-    fp_singularity.run_singularity_batch(subs)
+    #fp_singularity.run_singularity_batch(subs)

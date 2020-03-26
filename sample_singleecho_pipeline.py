@@ -39,7 +39,7 @@ if __name__ == "__main__":
     ]
 
     # Define task name for selected functional data
-    task = 'scriptreactivation'
+    task = 'memrecall'
 
     # Define your list of subjects
     # If 'sub-' is at the start of the subject string, it will be removed
