@@ -376,14 +376,16 @@ class FmriprepSingularityPipeline(object):
             json.dump(self.minerva_options, f) 
 
 
-    def run_singularity_batch(self):
+    def run_singularity_batch(self, subs):
         logging.info('Submitting singularity batch scripts to the private queue')
-        if self.singularity_batch_created:
-            for sub in self.subs:
-                # Submit job to scheduler
-                subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh')
-                # Sleep for 1 min between job submissions (recommended)
-                time.sleep(60)
+        for sub in subs:
+            # Submit job to scheduler
+            if sub.startswith('sub-'):
+                sub = sub[4:]
+
+            subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh', shell=True)
+            # Sleep for 1 min between job submissions (recommended)
+            time.sleep(60)
 
 
 # def motionreg(subs):
