@@ -70,4 +70,4 @@ if __name__ == "__main__":
 
     fp_singularity = bp.FmriprepSingularityPipeline(subs, bids_root, output_dir, minerva_options, multiecho=multiecho_flag)
     fp_singularity.create_singularity_batch()
-    #fp_singularity.run_singularity_batch()
+    fp_singularity.run_singularity_batch(subs)
