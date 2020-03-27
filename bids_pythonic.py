@@ -8,9 +8,27 @@ import subprocess
 import logging
 import datetime
 import time
+import sys
+
+# Check for correct versioning
+if sys.version_info[0] < 3:
+    raise Exception("Must be using Python 3")
 
 
 def create_bids_root(bids_root, description="This is a default description"):
+    """ 
+    Summary line. 
+  
+    Extended description of function. 
+  
+    Parameters: 
+    arg1 (int): Description of arg1 
+  
+    Returns: 
+    int: Description of return value 
+  
+    """
+
     # Create root directory
     # Create dataset_description.json and README
     if not os.path.isdir(bids_root):
@@ -38,29 +56,54 @@ def create_bids_root(bids_root, description="This is a default description"):
 
 
 class SetupBIDSPipeline(object):
+    """ 
+    Setup instance with class methods to create BIDS formatted directory structure.
+  
+    This class generates the BIDS formatted directory structure.
+    Note that the following methods must be run sequentially for successful BIDS directory creation:
+    1. validate()
+    2. create_bids_hierarchy()
+    3. convert()
+    4. update_json()
 
-    #
-    # This class accepts parameters (listed below), a directory for progress files
-    #
+    The bids_pythonic.create_bids_root() method MUST be run before using this class.
+  
+    """
     
     def __init__(self, dicom_dir, name, anat, func, task, root, 
         multiecho=False, ignore=False, overwrite=False, progress_dir=f'{os.getcwd()}/fpprogress/'):
-        
+        """ 
+        Constructs the necessary attributes for the SetupBIDSPipeline instance. 
+      
+        Parameters: 
+        dicom_dir (str): Root path of all DICOMs
+        name (str): subject ID
+        anat (str): Regex expression of path to anatomical DICOMs within the root DICOM directory
+        func (str): List of regex expressions of paths to function DICOMs within the root DICOM directory
+        task (str): Name of functional MRI task
+        root (str): Path to BIDS root that will be created
+        multiecho (bool): Flag to specify if functional data is multi-echo
+        ignore (bool): Flag to ignore warning if subject already exists
+        overwrite (bool): Flag to remove subject folder if it exists
+        progress_dir (str): Path to progress directory to store logging file (TBD)
+      
+        Returns: 
+        obj: SetupBIDSPipeline instance 
+      
+        """
+
         ### Create the fmriprepPipeline progress directory if it doesn't exist 
         ### This folder holds the current progress 
         # if not os.path.exists(progress_dir):
         #     os.makedirs(progress_dir)
         # self.progress_dir = progress_dir
 
-                # Create the logging file in the progress directory
+        # Configure logging options
         x = datetime.datetime.now()
         timestamp = x.strftime("%m-%d_%H%M")
         #self.logfile = f'{self.progress_dir}/log_{timestamp}.txt'
         logging.basicConfig(format='%(module)s - %(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
-        # Strip 'sub-' from name
-        # if name[:4] == 'sub-':
-        #     name = name[4:]
 
         # Pdict variable contains all the major variables for BIDS folder setup
         # Field         |           value                                               |
@@ -137,6 +180,15 @@ class SetupBIDSPipeline(object):
 
 
     def validate(self, multiecho=False):
+        """ 
+        Validates the presence of BIDS root directory and DICOM folders, 
+        and ensures that subject directory doesn't already exist.
+      
+        Parameters: 
+        multiecho (bool): Flag to specify if functional data is multi-echo    
+
+        """
+
         logging.info('Validating parameters.....')
 
         # Validate that BIDS root directory exists!
@@ -158,8 +210,8 @@ class SetupBIDSPipeline(object):
             elif self.pdict['ignore']:
                 logging.error(f"{self.pdict['name']}' exists! Continuing forward (risky).")
             else:
-                logging.error(f"{self.pdict['name']}' exists! Try a different subject name, or delete existing folder.")
-                raise OSError(f"'{self.pdict['name']}' exists! Try a different subject name, or delete existing folder.")
+                logging.error(f"{self.pdict['name']}' exists! Try a different subject name, or ignore/delete existing folder.")
+                raise OSError(f"'{self.pdict['name']}' exists! Try a different subject name, or ignore/delete existing folder.")
 
         # Check that the anatomical DICOM folder exists
         if not os.path.isdir(self.pdict['anat']):
@@ -186,6 +238,8 @@ class SetupBIDSPipeline(object):
 
 
     def create_bids_hierarchy(self):
+        """ Creates the subject directory and nested anat and func directories."""
+
         logging.info('Creating BIDS hierarchy.....')
 
         # Create subject directory
@@ -214,6 +268,15 @@ class SetupBIDSPipeline(object):
 
 
     def convert(self, multiecho=False):
+        """ 
+        Converts the specified DICOMs into NIFTIs using dcm2niix
+      
+        Parameters: 
+        multiecho (bool): Flag to specify if functional data is multi-echo  
+            Note that multiecho DICOMS must be specified as a list of lists (see multiecho example)  
+
+        """
+
         # Run dcm2niix for anatomical DICOM and rename
         logging.info('Converting anatomical DICOMs to NIFTI and renaming.....')
         self.anat_name = f'sub-{self.pdict["name"]}_T1w'
@@ -255,7 +318,6 @@ class SetupBIDSPipeline(object):
                     echo_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_echo-{str(echo_counter)}_bold'
                     self.func_name.append(echo_name)
                     command = ['dcm2niix', '-z', 'n', '-f', 'temp', '-b', 'y', '-o', self.func_path, echo]
-                    #print(command)
                     if not os.path.exists(f'{self.func_path}/{echo_name}.nii'):
                         process = subprocess.run(command)
                         to_rename = glob.glob(f"{self.func_path}*temp*.nii")[0]
@@ -270,6 +332,8 @@ class SetupBIDSPipeline(object):
     
 
     def update_json(self):
+        """ Updates the JSON sidecars generated with dcm2niix to include a field for TaskName """
+
         # Add TaskName field to BIDS functional NIFTI sidecars
         logging.info('Updating functional NIFTI sidecars.....')
         for func in self.func_name:
@@ -283,6 +347,18 @@ class SetupBIDSPipeline(object):
 
 
 def run_fmriprep_docker(bids_root, output, fs_license, freesurfer=False):
+    """ 
+    Runs the fmriprep-docker command on the BIDS directory generated by SetupBIDSPipeline.
+    This command can also be run on an independently generated BIDS directory. 
+  
+    Parameters: 
+    bids_root (str): Path to generated BIDS directory
+    output (str): Path to store fmriprep output
+    fs_license (str): Path to a valid Freesurfer license
+    freesurfer (bool): Flag to specify Freesurfer surface estimation
+  
+    """
+
     # This method simply runs the fmriprep-docker command
     logging.info('Executing fmriprep-docker command')
     command = ['fmriprep-docker', bids_root, output, 'participant', '--fs-license-file', fs_license]
@@ -293,8 +369,40 @@ def run_fmriprep_docker(bids_root, output, fs_license, freesurfer=False):
 
 
 class FmriprepSingularityPipeline(object):
+    """ 
+    This class prepares batch scripts and runs fmriprep through a Singularity image.
+    Designed for use on Minerva at Mount Sinai.
+  
+    Note that the following methods must be run in order:
+    1. create_singularity_batch()
+    2. run_singularity_batch()
+
+    Alternatively, you can run only create_singularity_batch() and submit generated scripts manually. 
+  
+    """
 
     def __init__(self, subs, bids_root, output, minerva_options, freesurfer=False, multiecho=False):
+        """ 
+        Constructs the necessary attributes for the FmriprepSingularityPipeline instance.   
+      
+        Parameters: 
+        subs (list): List of subject ID strings
+        bids_root (str): Path to generated BIDS directory
+        output (str): Path to store fmriprep output
+        minerva_options (dict): Dictionary of HPC-specific options (see below)
+        freesurfer (bool): Flag to specify Freesurfer surface estimation
+        multiecho (bool): Flag to specify if functional data is multi-echo 
+      
+        minerva_options dictionary should contain:
+            1. image_location: Path to directory that contains the fmriprep singularity image and Freesurfer license file
+            2. batch_dir: Path to a directory to store generated batch scripts
+            3. project_dir: Root level project directory (parent to bids_root)
+
+        Returns: 
+        obj: FmriprepSingularityPipeline instance 
+      
+        """
+
         # Define class variables
         self.subs = subs
         self.bids_root = bids_root
@@ -305,6 +413,12 @@ class FmriprepSingularityPipeline(object):
         self.multiecho = multiecho
 
     def create_singularity_batch(self):
+        """ 
+        Creates the subject batch scripts for running fmriprep with Singularity.
+        To run in parallel, subjects are run individually and submitted as separate jobs on the cluster.   
+      
+        """
+
         logging.info('Setting up fmriprep command through Singularity for Minerva')
         
         # Check if the singularity image exists in the image location
@@ -377,17 +491,24 @@ class FmriprepSingularityPipeline(object):
 
 
     def run_singularity_batch(self, subs):
+        """ 
+        Submits generated subject batch scripts to the HPC. 
+      
+        Parameters: 
+        subs (list): A list of subject ID strings. May be a subset of subjects in the BIDS directory.
+      
+        """
+
         logging.info('Submitting singularity batch scripts to the private queue')
+        counter = 1
         for sub in subs:
             # Submit job to scheduler
             if sub.startswith('sub-'):
                 sub = sub[4:]
 
+            logging.info(f'Submitting Job {counter} of {len(subs)}')
             subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh', shell=True)
+            counter += 1
             # Sleep for 1 min between job submissions (recommended)
             time.sleep(60)
 
-
-# def motionreg(subs):
-#     # Run either GLM regression or ART repair for motion
-#     pass
