@@ -1,3 +1,5 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 # fmriprepPipeline
 
 A Python pipeline for BIDS creation and fmriprep.
