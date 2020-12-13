@@ -32,7 +32,7 @@ if __name__ == "__main__":
     # Define dicom structure
     # Note that 'func' is a 1D array of dicom folder names for single echo
     multiecho=False
-    anat = 'anat'
+    anat = 'anat*'
     func = [ 
         '*sess*1',
         '*sess*2'
@@ -50,11 +50,11 @@ if __name__ == "__main__":
 
     # Loop over all subjects
     for name in subs:
-        setup = bp.SetupBIDSPipeline(dicom_dir, name, anat, func, task, bids_root, ignore=True)
+        setup = bp.SetupBIDSPipeline(dicom_dir, name, anat, func, task, bids_root, auto_dicom=True, ignore=True)
         setup.validate()
         setup.create_bids_hierarchy()
         setup.convert()
         setup.update_json()
 
-    # Run the fmriprep-docker command on the created BIDS directory
-    bp.run_fmriprep_docker(bids_root, output_dir, fs_license)
+    # # Run the fmriprep-docker command on the created BIDS directory
+    # bp.run_fmriprep_docker(bids_root, output_dir, fs_license)

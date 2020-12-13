@@ -9,6 +9,7 @@ import logging
 import datetime
 import time
 import sys
+import numpy as np
 
 # Check for correct versioning
 if sys.version_info[0] < 3:
@@ -69,9 +70,54 @@ class SetupBIDSPipeline(object):
     The bids_pythonic.create_bids_root() method MUST be run before using this class.
   
     """
+
+    def _return_dicom_path(self, dicom_dir, name, pattern, auto_dicom):
+        """ 
+        Accepts given top-level dicom directory for subjects and given pattern for matching and
+        returns a matching dicom directory handling multiple/zero matches.
+      
+        Parameters: 
+        dicom_dir (str): Root path of all DICOMs
+        name (str): subject ID
+        anat (str): Regex expression of path to anatomical DICOMs within the root DICOM directory
+        func (str): List of regex expressions of paths to function DICOMs within the root DICOM directory
+        task (str): Name of functional MRI task
+
+        Returns: 
+        str: matching dicom path name    
+
+        """
+        match = glob.glob(f"{dicom_dir}/{name}/{pattern}/")
+        if len(match) ==1:
+            logging.info(f'{pattern} has a match: {match[0]}')
+            return match[0]
+        elif len(match)>1:
+            logging.warning(f'{pattern} has multiple matches!')
+            num_dicoms = []
+            for i, m in enumerate(match):
+                num_files = len(os.listdir(m))
+                num_dicoms.append(num_files)
+                logging.info(f'{i+1}. {m} has {num_files} files')
+            if not auto_dicom:
+                ind = int(input('Do you want to use one of these directories? Enter index from above or 0 to exit:  '))
+                if ind==0:
+                    logging.error(f'{pattern} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                    raise OSError(f'{pattern} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                else:
+                    logging.info(f'Using {match[ind-1]}')
+                    return match[ind-1]
+            else:
+                ind = np.argmax(num_dicoms)
+                logging.info(f'Auto-DICOM choosing: {match[ind]}')
+                return match[ind]
+        elif len(match)==0:
+            logging.error(f'{pattern} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+            raise OSError(f'{pattern} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
     
+
     def __init__(self, dicom_dir, name, anat, func, task, root, 
-        multiecho=False, ignore=False, overwrite=False, progress_dir=f'{os.getcwd()}/fpprogress/'):
+        multiecho=False, ignore=False, overwrite=False, auto_dicom=False,
+        progress_dir=f'{os.getcwd()}/fpprogress/'):
         """ 
         Constructs the necessary attributes for the SetupBIDSPipeline instance. 
       
@@ -133,69 +179,20 @@ class SetupBIDSPipeline(object):
             self.pdict['name'] = name
         
         # Wildcard matching for anatomical dicom directory name
-        match = glob.glob(f"{dicom_dir}/{name}/{anat}/")
-        if len(match) ==1:
-            logging.info(f'{anat} has a match: {match[0]}')
-            self.pdict['anat'] = match[0]
-        elif len(match)>1:
-            logging.warning(f'{anat} has multiple matches!')
-            for i, m in enumerate(match):
-                logging.info(f'{i+1}. {m} has {len(os.listdir(m))} files')
-            ind = int(input('Do you want to use one of these directories? Enter index from above or 0 to exit:  '))
-            if ind==0:
-                logging.error(f'{anat} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                raise OSError(f'{anat} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-            else:
-                logging.info(f'Using {match[ind-1]}')
-                self.pdict['anat'] = match[ind-1]
-        elif len(match)==0:
-            logging.error(f'{anat} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-            raise OSError(f'{anat} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+        self.pdict['anat'] = self._return_dicom_path(dicom_dir, name, anat, auto_dicom=auto_dicom)
         
         # Wildcard matching for functional dicom directory name
         self.pdict['func'] = []
         if not multiecho:
             for one_func in func:
-                match = glob.glob(f"{dicom_dir}/{name}/{one_func}/")
-                if len(match) ==1:
-                    logging.info(f'{one_func} has a match: {match[0]}')
-                    self.pdict['func'].append(match[0])
-                elif len(match)>1:
-                    logging.warning(f'{one_func} has multiple matches!')
-                    for i, m in enumerate(match):
-                        logging.info(f'{i+1}. {m} has {len(os.listdir(m))} files')
-                    ind = int(input('Do you want to use one of these directories? Enter index from above or 0 to exit:  '))
-                    if ind==0:
-                        logging.error(f'{one_func} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                        raise OSError(f'{one_func} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                    else:
-                        logging.info(f'Using {match[ind-1]}')
-                        self.pdict['func'].append(match[ind-1])
-                elif len(match)==0:
-                    logging.error(f'{one_func} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                    raise OSError(f'{one_func} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                self.pdict['func'].append(self._return_dicom_path(dicom_dir, name, one_func, auto_dicom=auto_dicom))
+                
         elif multiecho:
             for run in func:
                 run_arr = []
                 for one_func in run:
-                    match = glob.glob(f"{dicom_dir}/{name}/{one_func}/")
-                    if len(match) ==1:
-                        logging.info(f'{one_func} has a match: {match[0]}')
-                        run_arr.append(match[0])
-                    elif len(match)>1:
-                        logging.warning(f'{one_func} has multiple matches!')
-                        for i, m in enumerate(match):
-                            logging.info(f'{i+1}. {m} has {len(os.listdir(m))} files')
-                        ind = int(input('Do you want to use one of these directories? Enter index from above or 0 to exit:  '))
-                        if ind==0:
-                            logging.error(f'{one_func} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                            raise OSError(f'{one_func} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                        else:
-                            logging.info(f'Using {match[ind-1]}')
-                            run_arr.append(match[ind-1])
-                    elif len(match)==0:
-                        logging.error(f'{one_func} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                        raise OSError(f'{one_func} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')    
+                    run_arr.append(_return_dicom_path(dicom_dir, name, one_func))
+                        
                 self.pdict['func'].append(run_arr)
 
         self.pdict['overwrite'] = overwrite
