@@ -137,11 +137,22 @@ class SetupBIDSPipeline(object):
         if len(match) ==1:
             logging.info(f'{anat} has a match: {match[0]}')
             self.pdict['anat'] = match[0]
-        else:
-            logging.error(f'{anat} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-            raise OSError(f'{anat} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+        elif len(match)>1:
+            logging.warning(f'{anat} has multiple matches!')
+            for i, m in enumerate(match):
+                logging.info(f'{i+1}. {m} has {len(os.listdir(m))} files')
+            ind = int(input('Do you want to use one of these directories? Enter index from above or 0 to exit:  '))
+            if ind==0:
+                logging.error(f'{anat} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                raise OSError(f'{anat} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+            else:
+                logging.info(f'Using {match[ind-1]}')
+                self.pdict['anat'] = match[ind-1]
+        elif len(match)==0:
+            logging.error(f'{anat} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+            raise OSError(f'{anat} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
         
-        # Wildcard matching for function dicom directory name
+        # Wildcard matching for functional dicom directory name
         self.pdict['func'] = []
         if not multiecho:
             for one_func in func:
@@ -149,9 +160,20 @@ class SetupBIDSPipeline(object):
                 if len(match) ==1:
                     logging.info(f'{one_func} has a match: {match[0]}')
                     self.pdict['func'].append(match[0])
-                else:
-                    logging.error(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                    raise OSError(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                elif len(match)>1:
+                    logging.warning(f'{one_func} has multiple matches!')
+                    for i, m in enumerate(match):
+                        logging.info(f'{i+1}. {m} has {len(os.listdir(m))} files')
+                    ind = int(input('Do you want to use one of these directories? Enter index from above or 0 to exit:  '))
+                    if ind==0:
+                        logging.error(f'{one_func} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                        raise OSError(f'{one_func} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                    else:
+                        logging.info(f'Using {match[ind-1]}')
+                        self.pdict['func'].append(match[ind-1])
+                elif len(match)==0:
+                    logging.error(f'{one_func} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                    raise OSError(f'{one_func} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
         elif multiecho:
             for run in func:
                 run_arr = []
@@ -160,9 +182,20 @@ class SetupBIDSPipeline(object):
                     if len(match) ==1:
                         logging.info(f'{one_func} has a match: {match[0]}')
                         run_arr.append(match[0])
-                    else:
-                        logging.error(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
-                        raise OSError(f'{one_func} has zero/multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                    elif len(match)>1:
+                        logging.warning(f'{one_func} has multiple matches!')
+                        for i, m in enumerate(match):
+                            logging.info(f'{i+1}. {m} has {len(os.listdir(m))} files')
+                        ind = int(input('Do you want to use one of these directories? Enter index from above or 0 to exit:  '))
+                        if ind==0:
+                            logging.error(f'{one_func} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                            raise OSError(f'{one_func} has multiple matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                        else:
+                            logging.info(f'Using {match[ind-1]}')
+                            run_arr.append(match[ind-1])
+                    elif len(match)==0:
+                        logging.error(f'{one_func} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
+                        raise OSError(f'{one_func} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')    
                 self.pdict['func'].append(run_arr)
 
         self.pdict['overwrite'] = overwrite
@@ -422,8 +455,8 @@ class FmriprepSingularityPipeline(object):
         logging.info('Setting up fmriprep command through Singularity for Minerva')
         
         # Check if the singularity image exists in the image location
-        if not os.path.isfile(f'{self.minerva_options["image_location"]}/fmriprep-20.0.5.simg'):
-            logging.error('fmriprep image does not exist in the given directory!')
+        if not os.path.isfile(f'{self.minerva_options["image_location"]}'):
+            logging.error('fmriprep image does not exist in the given location!')
         #     raise OSError('fmriprep image does not exist in the given directory!')
 
         # Create the specified batch directory folder if it doesn't exist
@@ -457,7 +490,7 @@ class FmriprepSingularityPipeline(object):
                     f'#BSUB -o {self.batch_dir}/batchoutput/nodejob-fmriprep-sub-{sub}.out\n',
                     f'#BSUB -L /bin/bash\n\n',
                     # Module load singularity
-                    f'ml singularity/3.2.1\n\n',
+                    f'ml singularity/3.6.4\n\n',
                     # Enter the directory that contains the fmriprep.20.0.1.simg
                     f'cd {self.minerva_options["project_dir"]}\n',
                 ]
@@ -465,9 +498,10 @@ class FmriprepSingularityPipeline(object):
 
                 # Create the command
                 command = f"singularity run -B $HOME:/home --home /home \
-                            -B {self.minerva_options['image_location']}:/software \
-                            --cleanenv {self.minerva_options['image_location']}/fmriprep-20.0.5.simg \
+                            -B {os.path.dirname(self.minerva_options['image_location'])}:/software \
+                            --cleanenv {self.minerva_options['image_location']} \
                             {self.bids_root} {self.output} participant \
+                            --output-spaces MNI152NLin2009cAsym:res-2 \
                             --participant-label {sub} --notrack --fs-license-file /software/license.txt"
                 command = " ".join(command.split())
                 # Ignore freesurfer if specified
@@ -490,7 +524,7 @@ class FmriprepSingularityPipeline(object):
             json.dump(self.minerva_options, f) 
 
 
-    def run_singularity_batch(self, subs):
+    def run_singularity_batch(self, subs, overwrite=False):
         """ 
         Submits generated subject batch scripts to the HPC. 
       
@@ -505,7 +539,14 @@ class FmriprepSingularityPipeline(object):
             # Submit job to scheduler
             if sub.startswith('sub-'):
                 sub = sub[4:]
-
+            
+            if os.path.isdir(f'{self.output}/sub-{sub}/'):
+                logging.warning(f'sub-{sub} preprocessing already completed!')
+                if not overwrite:
+                    logging.info(f'Skipping sub-{sub}')
+                    continue
+                else:
+                    logging.warning(f'Re-preprocessing sub-{sub}, and overwriting results!')
             logging.info(f'Submitting Job {counter} of {len(subs)}')
             subprocess.run(f'bsub < {self.batch_dir}/sub-{sub}.sh', shell=True)
             counter += 1
