@@ -162,6 +162,7 @@ class SetupBIDSPipeline(object):
         # ignore        |   Ignore warning if subject folder exists during validation   |
 
         # Note that for func, if the data is single echo, there is a array of runs
+        # and for multiecho data it is an array of arrays of echoes for each run
 
         # Uses glob to match wildcards, but throws error if there are multiple matches
         self.pdict = {}
@@ -180,9 +181,14 @@ class SetupBIDSPipeline(object):
         
         # Wildcard matching for functional dicom directory name
         self.pdict['func'] = []
-        for one_func in func:
-            self.pdict['func'].append(self._return_dicom_path(dicom_dir, name, one_func, auto_dicom=auto_dicom))       
         
+        for run in func:
+            run_arr = []
+            for one_func in run:
+                run_arr.append(_return_dicom_path(dicom_dir, name, one_func))
+                    
+            self.pdict['func'].append(run_arr)
+
         self.pdict['overwrite'] = overwrite
         self.pdict['ignore'] = ignore
 
@@ -201,7 +207,7 @@ class SetupBIDSPipeline(object):
         """ 
         Validates the presence of BIDS root directory and DICOM folders, 
         and ensures that subject directory doesn't already exist.
-      
+    
         """
 
         logging.info('Validating parameters.....')
@@ -234,11 +240,12 @@ class SetupBIDSPipeline(object):
             raise OSError(f"'{self.pdict['anat']}' does not exist! Input a valid anatomical DICOM directory.")
 
         # Check that the functional DICOM folders exist
-        for func in self.pdict['func']:
-            if not os.path.isdir(func):
-                logging.error(f"'{func}' does not exist! Input a valid functional DICOM directory.")
-                raise OSError(f"'{func}' does not exist! Input a valid functional DICOM directory.")
-        
+        for run in self.pdict['func']:
+            for echo in run:
+                if not os.path.isdir(echo):
+                    logging.error(f"'{echo}' does not exist! Input a valid functional DICOM directory.")
+                    raise OSError(f"'{echo}' does not exist! Input a valid functional DICOM directory.")
+
         # TODO: Validate fmriprep-docker requirements
         # TODO: Validate motion regression requirements
 
@@ -278,7 +285,7 @@ class SetupBIDSPipeline(object):
     def convert(self):
         """ 
         Converts the specified DICOMs into NIFTIs using dcm2niix
-      
+
         """
 
         # Run dcm2niix for anatomical DICOM and rename
@@ -295,20 +302,28 @@ class SetupBIDSPipeline(object):
         
         # Run dcm2niix for every functional DICOM and rename
         logging.info('Converting functional DICOMs to NIFTI and renaming.....')
-        
-        # For single echo data, loop over the self.pdict['func'] array
-        run_counter = 1
-        for func_input in self.pdict['func']:
-            func_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_bold'
-            self.func_name.append(func_name)
-            command = ['dcm2niix', '-z', 'n', '-f', func_name, '-b', 'y', '-o', self.func_path, func_input]
-            if not os.path.exists(f'{self.func_path}/{func_name}.nii'):
-                print('Running dcm2niix')
-                process = subprocess.run(command)
-            else:
-                logging.warning(f'{func_name} exists! Not overwriting.')
-            run_counter += 1
 
+        # For multi echo data, there is a list of runs, and each run is a list of echos
+        # Loop over the array of arrays and rename appropriately
+        # All outputs are in the BIDS func directory, but the run-# and echo-# are different
+        # Note: dcm2niix outputs multiecho weirdly, so they are first named temp, and converted to the right name
+        run_counter = 1
+        for run in self.pdict['func']:
+            echo_counter = 1
+            for echo in run:
+                echo_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_echo-{str(echo_counter)}_bold'
+                self.func_name.append(echo_name)
+                command = ['dcm2niix', '-z', 'n', '-f', 'temp', '-b', 'y', '-o', self.func_path, echo]
+                if not os.path.exists(f'{self.func_path}/{echo_name}.nii'):
+                    process = subprocess.run(command)
+                    to_rename = glob.glob(f"{self.func_path}*temp*.nii")[0]
+                    os.rename(to_rename, f'{self.func_path}/{echo_name}.nii')
+                    to_rename = glob.glob(f"{self.func_path}*temp*.json")[0]
+                    os.rename(to_rename, f'{self.func_path}/{echo_name}.json') 
+                else:
+                    logging.warning(f'{echo_name} exists! Not overwriting.')
+                echo_counter += 1
+            run_counter += 1
         logging.info('Completed!')
     
 
@@ -453,6 +468,8 @@ class FmriprepSingularityPipeline(object):
                 # Ignore freesurfer if specified
                 if not self.freesurfer:
                    command = " ".join([command, '--fs-no-reconall'])
+                # Ignore slice timing for multiecho data
+                command = " ".join([command, '--ignore slicetiming --skip-bids-validation'])
                 # Output command to batch script
                 f.write(command)
 
