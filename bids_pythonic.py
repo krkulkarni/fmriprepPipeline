@@ -3,13 +3,17 @@
 # Date: Feb 20, 2020
 
 import json
-import os, glob, shutil
+import os, glob, shutil, sys
 import subprocess
 import logging
-import datetime
-import time
-import sys
+import datetime, time
 import numpy as np
+
+from nilearn.input_data import NiftiMasker
+from nilearn.image import load_img, resample_img
+from nilearn.masking import apply_mask, unmask
+import pandas as pd
+
 
 # Check for correct versioning
 if sys.version_info[0] < 3:
@@ -18,15 +22,10 @@ if sys.version_info[0] < 3:
 
 def create_bids_root(bids_root, description="This is a default description"):
     """ 
-    Summary line. 
-  
-    Extended description of function. 
+    Creates the bids root directory.
   
     Parameters: 
-    arg1 (int): Description of arg1 
-  
-    Returns: 
-    int: Description of return value 
+    bids_root(str): path to bids_roots
   
     """
 
@@ -495,4 +494,80 @@ class FmriprepSingularityPipeline(object):
             counter += 1
             # Sleep for 1 min between job submissions (recommended)
             time.sleep(60)
+
+
+def post_fmriprep_clean_func(root, runs, tasks, output_dir, smoothing=None, chosen_confounds=None):
+    """ 
+    Global method to brain mask, smooth, and denoise all fMRI output from fmriprep output directory.
+
+    Parameters: 
+    root (str):                     Base directory of fmriprep output
+    runs (int list):                List of all runs to clean
+    tasks (str list):               List of task names to clean
+    output_dir (str):               Directory to store outputs
+    smoothing (int):                FWHM of Gaussian smoothing kernel
+    chosen_confounds (str list):    List of confounds used to denoise   
+
+    """
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    options = {
+        'root': root,
+        'runs': runs,
+        'tasks': tasks,
+        'output_dir': output_dir,
+        'smoothing': smoothing,
+        'chosen_confounds': chosen_confounds
+    }
+    with open(os.path.join(output_dir, 'options.json'), 'w') as f:
+        json.dump(options, f)
+    
+    # Obtain list of all subjects    
+    subs = []
+    for entry in os.listdir(root):
+        if os.path.isdir(os.path.join(root, entry)) and entry.startswith('sub'):
+            subs.append(entry)
+
+    # Assuming first subject is representative of full dataset, obtain list of runs
+    # runs = []     # TODO
+
+    # Assuming first subject is representative of full dataset, obtain list of tasks
+    # tasks = []    # TODO
+
+    # Loop over all subjects
+    for sub in subs:
+        sub_path = os.path.join(output_dir, sub)
+        if not os.path.exists(sub_path):
+            os.makedirs(sub_path)
+
+        # Loop over all tasks and runs
+        for task in tasks:
+            for run in runs:
+                print(f'Working on {sub}, task:{task}, run:{run}')
+
+                # Define patterns for mask, nifti, and confounds vars
+                mask_pattern = f'*task-{task}*run-{run}*brain_mask*nii.gz'
+                nifti_pattern = f'*task-{task}*run-{run}*preproc_bold*nii*'
+                confounds_pattern = f'*task-{task}*run-{run}*confounds*tsv*'
+
+                # Define paths based on patterns
+                mask = glob.glob(os.path.join(root, sub, 'func', mask_pattern))[0]
+                nifti = glob.glob(os.path.join(root, sub, 'func', nifti_pattern))[0]
+                confounds_path = glob.glob(os.path.join(root, sub, 'func', confounds_pattern))[0]
+
+                # Load confounds tsv and create confounds matrix
+                confounds = pd.read_csv(confounds_path, sep="\t")
+                confound_matrix = confounds[chosen_confounds].to_numpy()
+                print(f'Confound matrix has shape: {confound_matrix.shape}')
+
+                # Define NiftiMasker, which performs the masking, smoothing and denoising
+                masker = NiftiMasker(mask_img=mask, smoothing_fwhm=smoothing, verbose=5)
+                masked_data = masker.fit_transform(nifti, confounds=confound_matrix)
+                
+                # Transform data back into nifti image and save in subject directory
+                print('Transforming data back into nifti and saving')
+                masked_img = masker.inverse_transform(masked_data)
+                mask_img_name = f'{sub}_run-{run}_preproc_bold_mask_smooth_denoised.nii.gz'
+                masked_img.to_filename(os.path.join(sub_path, mask_img_name))
 

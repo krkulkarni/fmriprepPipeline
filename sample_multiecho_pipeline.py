@@ -18,7 +18,7 @@ You can adapt this script for your use or build your own.
 #
 # Add the command: export PYTHONPATH=${PYTHONPATH}:<location-of-fmriprepPipeline>
 # to your ~/.bash_profile file and source it
-import bids_pythonic as bp
+import bids_pythonic_multiecho as bp
 
 if __name__ == "__main__":
 
