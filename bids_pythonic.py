@@ -368,7 +368,7 @@ class FmriprepSingularityPipeline(object):
   
     """
 
-    def __init__(self, subs, bids_root, output, minerva_options, freesurfer=False):
+    def __init__(self, subs, bids_root, output, minerva_options, freesurfer=False, cifti_output=False):
         """ 
         Constructs the necessary attributes for the FmriprepSingularityPipeline instance.   
       
@@ -436,9 +436,9 @@ class FmriprepSingularityPipeline(object):
                     f'#BSUB -J fmriprep_sub-{sub}\n',
                     f'#BSUB -P acc_guLab\n',
                     f'#BSUB -q private\n',
-                    f'#BSUB -n 4\n',
-                    f'#BSUB -W 20:00\n',
-                    f'#BSUB -R rusage[mem=16000]\n',
+                    f'#BSUB -n 8\n',
+                    f'#BSUB -W 04:00\n',
+                    f'#BSUB -R rusage[mem=8000]\n',
                     f'#BSUB -o {self.batch_dir}/batchoutput/nodejob-fmriprep-sub-{sub}.out\n',
                     f'#BSUB -L /bin/bash\n\n',
                     # Module load singularity
@@ -459,6 +459,9 @@ class FmriprepSingularityPipeline(object):
                 # Ignore freesurfer if specified
                 if not self.freesurfer:
                    command = " ".join([command, '--fs-no-reconall'])
+                # Add cifti-output if specified
+                if self.cifti_output:
+                    command = " ".join([command '--cifti-output'])
                 # Output command to batch script
                 f.write(command)
 
