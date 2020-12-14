@@ -513,6 +513,7 @@ def get_sub_list(root):
 def post_fmriprep_clean_func(root, runs, tasks, output_dir, smoothing=None, chosen_confounds=None):
     """ 
     Global method to brain mask, smooth, and denoise all fMRI output from fmriprep output directory.
+    *** STILL IN BETA, USE AT YOUR OWN RISK ***
 
     Parameters: 
     root (str):                     Base directory of fmriprep output
@@ -602,6 +603,7 @@ def post_fmriprep_clean_func(root, runs, tasks, output_dir, smoothing=None, chos
 def parcellate(location, output_dir=None, parcels=None, is_dir=False, parcel_name='default'):
     """ 
     Global method to parcellate all niftis after mask, smooth, denoise, directory.
+    *** STILL IN BETA, USE AT YOUR OWN RISK ***
 
     Parameters: 
     location (str):                 Base directory of cleaned output
