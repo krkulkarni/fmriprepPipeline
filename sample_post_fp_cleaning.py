@@ -24,7 +24,9 @@ if __name__ == "__main__":
     # Define your path names
     project_dir = '/Volumes/synapse/home/kulkak01/BIDS_MultiEcho/'
     fmriprep_dir = os.path.join(project_dir, 'fmriprep_no_reconall/fmriprep')
-    output_dir = os.path.join(project_dir, 'fmriprep_no_reconall/post_fmriprep_')
+    output_dir = os.path.join(project_dir, 'fmriprep_no_reconall/post_fmriprep_denoise')
+    parcel_output = os.path.join(project_dir, 'fmriprep_no_reconall/parcel_output')
+    parcel_dir = '/Volumes/synapse/projects/MemRecall/scripts/parcellation_scripts/3mm_Stanford_ROIs'
 
     # See https://fmriprep.org/en/stable/outputs.html#confounds for list of all confounds
     # Suggested confounds included here
@@ -34,11 +36,14 @@ if __name__ == "__main__":
     					'cosine00', 'cosine01', 'cosine02', 'cosine03', 'cosine04', 'cosine05',
     					'framewise_displacement']
 
-    postfp = bp.post_fmriprep_clean_func(root=fmriprep_dir, 
-    	runs=[1], 
-    	tasks=['fish', 'slot'], 
-    	output_dir=output_dir,
-    	smoothing=4, 
-    	chosen_confounds=chosen_confounds
-    	)
+    # bp.post_fmriprep_clean_func(root=fmriprep_dir, 
+    # 	runs=[1], 
+    # 	tasks=['fish', 'slot'], 
+    # 	output_dir=output_dir,
+    # 	smoothing=4, 
+    # 	chosen_confounds=chosen_confounds
+    # 	)
+
+    bp.parcellate(output_dir, output_dir=parcel_output, 
+    	parcels=parcel_dir, is_dir=True, parcel_name='stanford')
 

@@ -2,6 +2,7 @@
 # Author: Kaustubh Kulkarni
 # Date: Feb 20, 2020
 
+# For fmriprep-setup
 import json
 import os, glob, shutil, sys
 import subprocess
@@ -9,10 +10,16 @@ import logging
 import datetime, time
 import numpy as np
 
+# For mask, smooth, denoise
 from nilearn.input_data import NiftiMasker
 from nilearn.image import load_img, resample_img
 from nilearn.masking import apply_mask, unmask
 import pandas as pd
+
+# For parcellation
+from nilearn.image import concat_imgs
+from nilearn.input_data import NiftiMapsMasker
+from nilearn import datasets
 
 
 # Check for correct versioning
@@ -495,6 +502,13 @@ class FmriprepSingularityPipeline(object):
             # Sleep for 1 min between job submissions (recommended)
             time.sleep(60)
 
+def get_sub_list(root):
+    # Obtain list of all subjects    
+    subs = []
+    for entry in os.listdir(root):
+        if os.path.isdir(os.path.join(root, entry)) and entry.startswith('sub'):
+            subs.append(entry)
+    return subs
 
 def post_fmriprep_clean_func(root, runs, tasks, output_dir, smoothing=None, chosen_confounds=None):
     """ 
@@ -521,7 +535,7 @@ def post_fmriprep_clean_func(root, runs, tasks, output_dir, smoothing=None, chos
         'chosen_confounds': chosen_confounds
     }
     with open(os.path.join(output_dir, 'options.json'), 'w') as f:
-        json.dump(options, f)
+        json.dump(options, f, indent=4)
     
     # Obtain list of all subjects    
     subs = []
@@ -534,6 +548,14 @@ def post_fmriprep_clean_func(root, runs, tasks, output_dir, smoothing=None, chos
 
     # Assuming first subject is representative of full dataset, obtain list of tasks
     # tasks = []    # TODO
+
+    # Define postfix depending on options
+    postfix = ''
+    if smoothing:
+        postfix = f'{postfix}_smooth{smoothing}'
+    if chosen_confounds:
+        postfix = f'{postfix}_denoised'
+    postfix = f'{postfix}.nii.gz'
 
     # Loop over all subjects
     for sub in subs:
@@ -557,9 +579,13 @@ def post_fmriprep_clean_func(root, runs, tasks, output_dir, smoothing=None, chos
                 confounds_path = glob.glob(os.path.join(root, sub, 'func', confounds_pattern))[0]
 
                 # Load confounds tsv and create confounds matrix
-                confounds = pd.read_csv(confounds_path, sep="\t")
-                confound_matrix = confounds[chosen_confounds].to_numpy()
-                print(f'Confound matrix has shape: {confound_matrix.shape}')
+                if chosen_confounds:
+                    confounds = pd.read_csv(confounds_path, sep="\t").fillna(0)
+                    confound_matrix = confounds[chosen_confounds].to_numpy()
+                    print(f'Confound matrix has shape: {confound_matrix.shape}')
+                else:
+                    print('No confounds specified')
+                    confound_matrix = None
 
                 # Define NiftiMasker, which performs the masking, smoothing and denoising
                 masker = NiftiMasker(mask_img=mask, smoothing_fwhm=smoothing, verbose=5)
@@ -568,6 +594,64 @@ def post_fmriprep_clean_func(root, runs, tasks, output_dir, smoothing=None, chos
                 # Transform data back into nifti image and save in subject directory
                 print('Transforming data back into nifti and saving')
                 masked_img = masker.inverse_transform(masked_data)
-                mask_img_name = f'{sub}_run-{run}_preproc_bold_mask_smooth_denoised.nii.gz'
-                masked_img.to_filename(os.path.join(sub_path, mask_img_name))
+                mask_img_name = f'{sub}_task-{task}_run-{run}_preproc_bold_mask'
+                output_img_name = mask_img_name + postfix
+                masked_img.to_filename(os.path.join(sub_path, output_img_name))
+
+
+def parcellate(location, output_dir=None, parcels=None, is_dir=False, parcel_name='default'):
+    """ 
+    Global method to parcellate all niftis after mask, smooth, denoise, directory.
+
+    Parameters: 
+    location (str):                 Base directory of cleaned output
+    output_dir (str):               Directory to store outputs
+    parcels (int):                  Location of parcels NIFTI, or directory of parcel niftis
+    is_dir (bool):                  True if specifying parcel directory
+    parcel_name (str):              Name of parcellation  
+
+    """
+    for sub in os.listdir(location):
+        if not sub.startswith('sub'):
+            continue
+        for nifti_file in os.listdir(os.path.join(location, sub)):
+            if not (nifti_file.endswith('nii') or nifti_file.endswith('nii.gz')):
+                continue
+            basename = nifti_file.split('.')[0]
+            name = f'{basename}_{parcel_name}_rois.tsv'
+            nifti = os.path.join(location, sub, nifti_file)
+
+            if parcels:
+                # If parcellation is in one file
+                if not is_dir:
+                    # Create masker
+                    masker = NiftiLabelsMasker(labels_img=parcels, standardize='zscore', resampling_target='labels', verbose=5)
+                    timeseries = masker.fit_transform(nifti)
+
+                # If parcellation is in separate files within a directory
+                elif is_dir:
+                    parcel_files = sorted(os.listdir(parcels))
+                    atlas_filenames = [os.path.join(parcels, parcel) for parcel in parcel_files]
+
+                    concat_parcels = concat_imgs(atlas_filenames)
+                    masker = NiftiMapsMasker(maps_img=concat_parcels, standardize='zscore', resampling_target='maps', verbose=5)
+                    timeseries = masker.fit_transform(nifti)
+
+            # If parcellation not specified, use harvard-oxford atlas
+            elif not parcels:
+                dataset = datasets.fetch_atlas_harvard_oxford('cort-maxprob-thr25-2mm')
+                atlas_filename = dataset.maps
+
+                # Create masker
+                masker = NiftiLabelsMasker(labels_img=atlas_filename, standardize='zscore', resampling_target='labels', verbose=5)
+                timeseries = masker.fit_transform(nifti)
+
+            # Output time series
+            if output_dir:
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir)
+                output_path = os.path.join(output_dir, name)
+                np.savetxt(output_path, timeseries, delimiter='\t')
+            else:
+                print(timeseries.shape)
 
