@@ -396,6 +396,11 @@ class FmriprepSingularityPipeline(object):
         self.freesurfer = freesurfer
         self.minerva_options = minerva_options
         self.batch_dir = minerva_options['batch_dir']
+        self.cifti_output = cifti_output
+
+        if cifti_output and not freesurfer:
+            logging.error('Freesurfer must be on to have cifti-output!')
+            raise OSError('Freesurfer must be on to have cifti-output!')
 
     def create_singularity_batch(self):
         """ 
@@ -409,7 +414,7 @@ class FmriprepSingularityPipeline(object):
         # Check if the singularity image exists in the image location
         if not os.path.isfile(f'{self.minerva_options["image_location"]}'):
             logging.error('fmriprep image does not exist in the given location!')
-        #     raise OSError('fmriprep image does not exist in the given directory!')
+            raise OSError('fmriprep image does not exist in the given directory!')
 
         # Create the specified batch directory folder if it doesn't exist
         logging.info('Creating batch directory for subject scripts')
@@ -436,7 +441,7 @@ class FmriprepSingularityPipeline(object):
                     f'#BSUB -J fmriprep_sub-{sub}\n',
                     f'#BSUB -P acc_guLab\n',
                     f'#BSUB -q private\n',
-                    f'#BSUB -n 8\n',
+                    f'#BSUB -n 4\n',
                     f'#BSUB -W 04:00\n',
                     f'#BSUB -R rusage[mem=8000]\n',
                     f'#BSUB -o {self.batch_dir}/batchoutput/nodejob-fmriprep-sub-{sub}.out\n',
@@ -461,7 +466,7 @@ class FmriprepSingularityPipeline(object):
                    command = " ".join([command, '--fs-no-reconall'])
                 # Add cifti-output if specified
                 if self.cifti_output:
-                    command = " ".join([command '--cifti-output'])
+                    command = " ".join([command, '--cifti-output'])
                 # Output command to batch script
                 f.write(command)
 
