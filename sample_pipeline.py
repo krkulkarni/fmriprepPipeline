@@ -25,15 +25,15 @@ if __name__ == "__main__":
     # Define your path names
     fs_license = '/Applications/freesurfer/license.txt'
     project_dir = '/Volumes/synapse/home/kulkak01/fmriprepPipeline/'
-    bids_root = f"{project_dir}/singleecho_rawdata/bids_root/"
-    output_dir = f"{project_dir}/singleecho_rawdata/fmriprep_output/"
-    dicom_dir = f"{project_dir}/singleecho_rawdata/dicoms/"
+    bids_root = f"{project_dir}/singleecho_rawdata/rawdata/"
+    output_dir = f"{project_dir}/singleecho_rawdata/derivatives/"
+    dicom_dir = f"{project_dir}/singleecho_rawdata/sourcedata/"
 
     # Define dicom structure
     # Note that 'func' is a 1D array of dicom folder names for single echo
     multiecho=False
-    anat = 'anat*'
-    func = [ 
+    anat_pattern = 'anat*'
+    func_patterns = [ 
         '*sess*1',
         '*sess*2'
     ]
@@ -49,12 +49,12 @@ if __name__ == "__main__":
     bp.create_bids_root(bids_root)
 
     # Loop over all subjects
-    for name in subs:
-        setup = bp.SetupBIDSPipeline(dicom_dir, name, anat, func, task, bids_root, auto_dicom=True, ignore=True)
-        setup.validate()
-        setup.create_bids_hierarchy()
-        setup.convert()
-        setup.update_json()
+    setup = bp.SetupBIDSPipeline(subs, dicom_dir, anat_pattern, func_patterns, task, bids_root, ignore=True)
+    setup.validate()
+    setup.obtain_dicoms(auto_dicom=True)
+    setup.create_bids_hierarchy()
+    setup.convert()
+    setup.update_json()
 
     # # Run the fmriprep-docker command on the created BIDS directory
     # bp.run_fmriprep_docker(bids_root, output_dir, fs_license)

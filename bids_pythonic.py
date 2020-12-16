@@ -77,7 +77,7 @@ class SetupBIDSPipeline(object):
   
     """
 
-    def _return_dicom_path(self, dicom_dir, name, pattern, auto_dicom):
+    def _return_dicom_path(self, name, pattern, auto_dicom):
         """ 
         Accepts given top-level dicom directory for subjects and given pattern for matching and
         returns a matching dicom directory handling multiple/zero matches.
@@ -94,7 +94,7 @@ class SetupBIDSPipeline(object):
         str: matching dicom path name    
 
         """
-        match = glob.glob(f"{dicom_dir}/{name}/{pattern}/")
+        match = glob.glob(f"{self.pdict['dicom_dir']}/{name}/{pattern}/")
         if len(match) ==1:
             logging.info(f'{pattern} has a match: {match[0]}')
             return match[0]
@@ -122,17 +122,17 @@ class SetupBIDSPipeline(object):
             raise OSError(f'{pattern} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
     
 
-    def __init__(self, dicom_dir, name, anat, func, task, root, 
-        ignore=False, overwrite=False, auto_dicom=False,
+    def __init__(self, sub_list, dicom_dir, anat_pattern, func_patterns, task, root, 
+        ignore=False, overwrite=False,
         progress_dir=f'{os.getcwd()}/fpprogress/'):
         """ 
         Constructs the necessary attributes for the SetupBIDSPipeline instance. 
       
         Parameters: 
+        sub_list (str list): List of all participant IDs
         dicom_dir (str): Root path of all DICOMs
-        name (str): subject ID
-        anat (str): Regex expression of path to anatomical DICOMs within the root DICOM directory
-        func (str): List of regex expressions of paths to function DICOMs within the root DICOM directory
+        anat_pattern (str): Regex expression of path to anatomical DICOMs within the root DICOM directory
+        func_patterns (str list): List of regex expressions of paths to function DICOMs within the root DICOM directory
         task (str): Name of functional MRI task
         root (str): Path to BIDS root that will be created
         ignore (bool): Flag to ignore warning if subject already exists
@@ -160,9 +160,8 @@ class SetupBIDSPipeline(object):
         # Pdict variable contains all the major variables for BIDS folder setup
         # Field         |           value                                               |
         #-------------------------------------------------------------------------------|
-        # name          |   ID of participant                                           |
-        # anat          |   Name of anatomical DICOM folder in parent DICOM folder      |
-        # func          |   List of functional DICOM folder names in parent DICOM folder|
+        # sub_list      |   IDs of all participants                                     |
+        # dicom_dir     |   Location of parent DICOM folder                             |
         # task          |   Name of task                                                |
         # overwrite     |   Delete and overwrite subject folder if it exists            | 
         # ignore        |   Ignore warning if subject folder exists during validation   |
@@ -173,34 +172,27 @@ class SetupBIDSPipeline(object):
         self.pdict = {}
         self.pdict['root'] = root
         self.pdict['task'] = task
+        self.pdict['dicom_dir'] = dicom_dir
+        self.anat_pattern = anat_pattern
+        self.func_patterns = func_patterns
 
         # Use strip 'sub-' from name if it exists
         # The 'sub-' will be added later for BIDS formatting
-        if name.startswith('sub-'):
-            self.pdict['name'] = name[4:]
-        else:
-            self.pdict['name'] = name
-        
-        # Wildcard matching for anatomical dicom directory name
-        self.pdict['anat'] = self._return_dicom_path(dicom_dir, name, anat, auto_dicom=auto_dicom)
-        
-        # Wildcard matching for functional dicom directory name
-        self.pdict['func'] = []
-        for one_func in func:
-            self.pdict['func'].append(self._return_dicom_path(dicom_dir, name, one_func, auto_dicom=auto_dicom))       
+        self.pdict['sub_list'] = []
+        for name in sub_list:
+            if name.startswith('sub-'):
+                self.pdict['sub_list'].append(name[4:])
+            else:
+                self.pdict['sub_list'].append(name)
         
         self.pdict['overwrite'] = overwrite
         self.pdict['ignore'] = ignore
 
         # Initialize paths for BIDS-formatted folders and files
-        # anat_path     ->  path to BIDS anat folder
-        # func_path     ->  path to BIDS func folder
-        # anat_name     ->  filename for BIDS anatomical NIFTI
-        # func_name     ->  list of all filenames for BIDS functional NIFTIS
-        self.anat_path = ""
-        self.func_path = ""
-        self.anat_name = ""
-        self.func_name = []
+        # raw_anat_paths     ->  list of paths to subject BIDS anat folders
+        # raw_func_paths     ->  list of paths to subject BIDS func folder
+        self.raw_anat_paths = []
+        self.raw_func_paths = []
 
 
     def validate(self):
@@ -220,65 +212,94 @@ class SetupBIDSPipeline(object):
         else:
             logging.error('Root does not exist!')
             raise OSError('Root does not exist!')
-        
-        # Check if the subject folder already exists, and will throw an error if it does
-        # If overwrite is on, the subject folder will be deleted
-        # If ignore is on, the analysis will proceed even if the subject folder exists
-        if os.path.isdir(f'{self.pdict["root"]}/sub-{self.pdict["name"]}'):
-            if self.pdict['overwrite']:
-                logging.warning(f'Overwrite option selected! Removing subject {self.pdict["name"]}')
-                shutil.rmtree(f'{self.pdict["root"]}/sub-{self.pdict["name"]}')
-            elif self.pdict['ignore']:
-                logging.error(f"{self.pdict['name']}' exists! Continuing forward (risky).")
+
+        # Loop over all subjects
+        for name in self.pdict['sub_list']:
+            
+            # Check if the subject folder already exists, and will throw an error if it does
+            # If overwrite is on, the subject folder will be deleted
+            # If ignore is on, the analysis will proceed even if the subject folder exists
+            if os.path.isdir(f'{self.pdict["root"]}/sub-{name}'):
+                if self.pdict['overwrite']:
+                    logging.warning(f'Overwrite option selected! Removing subject {name}')
+                    shutil.rmtree(f'{self.pdict["root"]}/sub-{name}')
+                elif self.pdict['ignore']:
+                    logging.warning(f"{name}' exists! Continuing forward (risky).")
+                else:
+                    logging.error(f"{name}' exists! Try a different subject name, or ignore/delete existing folder.")
+                    raise OSError(f"'{name}' exists! Try a different subject name, or ignore/delete existing folder.")
+
+            # Check that the anatomical DICOM folder exists
+            match = glob.glob(f"{self.pdict['dicom_dir']}/{name}/{self.anat_pattern}/")
+            if not match:
+                logging.error(f"'{self.anat_pattern}' does not exist! Input a valid anatomical DICOM pattern.")
+                raise OSError(f"'{self.anat_pattern}' does not exist! Input a valid anatomical DICOM pattern.")
             else:
-                logging.error(f"{self.pdict['name']}' exists! Try a different subject name, or ignore/delete existing folder.")
-                raise OSError(f"'{self.pdict['name']}' exists! Try a different subject name, or ignore/delete existing folder.")
-
-        # Check that the anatomical DICOM folder exists
-        if not os.path.isdir(self.pdict['anat']):
-            logging.error(f"'{self.pdict['anat']}' does not exist! Input a valid anatomical DICOM directory.")
-            raise OSError(f"'{self.pdict['anat']}' does not exist! Input a valid anatomical DICOM directory.")
-
-        # Check that the functional DICOM folders exist
-        for func in self.pdict['func']:
-            if not os.path.isdir(func):
-                logging.error(f"'{func}' does not exist! Input a valid functional DICOM directory.")
-                raise OSError(f"'{func}' does not exist! Input a valid functional DICOM directory.")
-        
+                logging.info(f'{name} anatomical dicom directory exists!')
+            # Check that the functional DICOM folders exist
+            for func in self.func_patterns:
+                match = glob.glob(f"{self.pdict['dicom_dir']}/{name}/{func}/")
+                if not match:
+                    logging.error(f"'{func}' does not exist! Input a valid functional DICOM pattern.")
+                    raise OSError(f"'{func}' does not exist! Input a valid functional DICOM pattern.")
+                else:
+                    logging.info(f'{name} functional directory exists!')
+            
         # TODO: Validate fmriprep-docker requirements
         # TODO: Validate motion regression requirements
 
         logging.info('Validated!')
 
 
+    def obtain_dicoms(self, auto_dicom=False):
+        """ Use the define anat and func patterns to retrieve dicom file/directory names."""  
+        
+        # Wildcard matching for anatomical dicom directory name
+        self.source_anat_paths = []
+        self.source_func_paths = []
+        for name in self.pdict['sub_list']:
+            self.source_anat_paths.append(self._return_dicom_path(name, self.anat_pattern, auto_dicom=auto_dicom))
+            
+            # Wildcard matching for functional dicom directory name
+            sub_func_paths = []
+            for one_func in self.func_patterns:
+                sub_func_paths.append(self._return_dicom_path(name, one_func, auto_dicom=auto_dicom)) 
+            self.source_func_paths.append(sub_func_paths)           
+
+
     def create_bids_hierarchy(self):
         """ Creates the subject directory and nested anat and func directories."""
 
         logging.info('Creating BIDS hierarchy.....')
+        self.raw_anat_paths = []
+        self.raw_func_paths = []
 
-        # Create subject directory
-        # If they do, log an error but continue
-        sub_path = f'{self.pdict["root"]}/sub-{self.pdict["name"]}'
-        try:
-            os.makedirs(sub_path)
-        except FileExistsError:
-            logging.warning('Subject directory exists!')
+        for name in self.pdict['sub_list']:
+            # Create subject directory
+            # If they do, log an error but continue
+            sub_path = f'{self.pdict["root"]}/sub-{name}'
+            try:
+                os.makedirs(sub_path)
+            except FileExistsError:
+                logging.warning('Subject directory exists!')
 
-        # Create anat and func directories
-        # If they do, log an error but continue
-        self.anat_path = f'{sub_path}/anat/'
-        try:
-            os.makedirs(self.anat_path)
-        except FileExistsError:
-            logging.warning('anat directory exists')
+            # Create anat and func directories
+            # If they do, log an error but continue
+            raw_anat_path = f'{sub_path}/anat/'
+            self.raw_anat_paths.append(raw_anat_path)
+            try:
+                os.makedirs(raw_anat_path)
+            except FileExistsError:
+                logging.warning('anat directory exists')
 
-        self.func_path = f'{sub_path}/func/'
-        try:
-            os.makedirs(self.func_path)
-        except FileExistsError:
-            logging.warning('func directory exists')
+            raw_func_path = f'{sub_path}/func/'
+            self.raw_func_paths.append(raw_func_path)
+            try:
+                os.makedirs(raw_func_path)
+            except FileExistsError:
+                logging.warning('func directory exists')
 
-        logging.info("Completed!")
+            logging.info("Completed!")
 
 
     def convert(self):
@@ -287,33 +308,42 @@ class SetupBIDSPipeline(object):
       
         """
 
-        # Run dcm2niix for anatomical DICOM and rename
-        logging.info('Converting anatomical DICOMs to NIFTI and renaming.....')
-        self.anat_name = f'sub-{self.pdict["name"]}_T1w'
-        command = ['dcm2niix', '-z', 'n', '-f', self.anat_name, '-b', 'y', '-o', self.anat_path, self.pdict['anat']]
-        if not os.path.exists(f'{self.anat_path}/{self.anat_name}.nii'):
-            print('Running dcm2niix')
-            process = subprocess.run(command)
-        else:
-            logging.warning(f'{self.anat_name} exists! Not overwriting.')
-        logging.info('Completed!')
+        self.subwise_raw_func_names = []
+        for (name, source_anat_path, source_func_paths, raw_anat_path, raw_func_path) in zip(self.pdict['sub_list'], 
+            self.source_anat_paths, self.source_func_paths,
+            self.raw_anat_paths, self.raw_func_paths):
 
-        
-        # Run dcm2niix for every functional DICOM and rename
-        logging.info('Converting functional DICOMs to NIFTI and renaming.....')
-        
-        # For single echo data, loop over the self.pdict['func'] array
-        run_counter = 1
-        for func_input in self.pdict['func']:
-            func_name = f'sub-{self.pdict["name"]}_task-{self.pdict["task"]}_run-{str(run_counter)}_bold'
-            self.func_name.append(func_name)
-            command = ['dcm2niix', '-z', 'n', '-f', func_name, '-b', 'y', '-o', self.func_path, func_input]
-            if not os.path.exists(f'{self.func_path}/{func_name}.nii'):
+            # Run dcm2niix for anatomical DICOM and rename
+            logging.info('Converting anatomical DICOMs to NIFTI and renaming.....')
+            raw_anat_name = f'sub-{name}_T1w'
+            raw_anat_path = f'{self.pdict["root"]}/sub-{name}/anat/'
+            command = ['dcm2niix', '-z', 'n', '-f', raw_anat_name, '-b', 'y', '-o', raw_anat_path, source_anat_path]
+            if not os.path.exists(f'{raw_anat_path}/{raw_anat_name}.nii'):
                 print('Running dcm2niix')
                 process = subprocess.run(command)
             else:
-                logging.warning(f'{func_name} exists! Not overwriting.')
-            run_counter += 1
+                logging.warning(f'{raw_anat_name} exists! Not overwriting.')
+            logging.info('Completed!')
+
+            
+            # Run dcm2niix for every functional DICOM and rename
+            logging.info('Converting functional DICOMs to NIFTI and renaming.....')
+            
+            # For single echo data, loop over the source_func_paths array
+            run_counter = 1
+            subject_func_names = []
+            for func_input in source_func_paths:
+                raw_func_name = f'sub-{name}_task-{self.pdict["task"]}_run-{str(run_counter)}_bold'
+                subject_func_names.append(raw_func_name)
+                raw_func_path = f'{self.pdict["root"]}/sub-{name}/func/'
+                command = ['dcm2niix', '-z', 'n', '-f', raw_func_name, '-b', 'y', '-o', raw_func_path, func_input]
+                if not os.path.exists(f'{raw_func_path}/{raw_func_name}.nii'):
+                    print('Running dcm2niix')
+                    process = subprocess.run(command)
+                else:
+                    logging.warning(f'{raw_func_name} exists! Not overwriting.')
+                run_counter += 1
+            self.subwise_raw_func_names.append(subject_func_names)
 
         logging.info('Completed!')
     
@@ -323,17 +353,19 @@ class SetupBIDSPipeline(object):
 
         # Add TaskName field to BIDS functional NIFTI sidecars
         logging.info('Updating functional NIFTI sidecars.....')
-        for func in self.func_name:
-            with open(f'{self.func_path}/{func}.json') as json_file:
-                data = json.load(json_file)
-                data['TaskName'] = self.pdict["task"]
+        for (name, raw_func_path, subject_func_names) in zip(self.pdict['sub_list'], 
+            self.raw_func_paths, self.subwise_raw_func_names):
+            for raw_func_name in subject_func_names:
+                with open(f'{raw_func_path}/{raw_func_name}.json') as json_file:
+                    data = json.load(json_file)
+                    data['TaskName'] = self.pdict["task"]
 
-            with open(f'{self.func_path}/{func}.json', 'w') as outfile:
-                json.dump(data,outfile)
+                with open(f'{raw_func_path}/{raw_func_name}.json', 'w') as outfile:
+                    json.dump(data, outfile, indent=4, sort_keys=True)
         logging.info('Completed!')
 
 
-def run_fmriprep_docker(bids_root, output, fs_license, freesurfer=False):
+def run_serial_fmriprep_docker(bids_root, output, fs_license, freesurfer=False):
     """ 
     Runs the fmriprep-docker command on the BIDS directory generated by SetupBIDSPipeline.
     This command can also be run on an independently generated BIDS directory. 
@@ -401,6 +433,7 @@ class FmriprepSingularityPipeline(object):
         if cifti_output and not freesurfer:
             logging.error('Freesurfer must be on to have cifti-output!')
             raise OSError('Freesurfer must be on to have cifti-output!')
+
 
     def create_singularity_batch(self):
         """ 
