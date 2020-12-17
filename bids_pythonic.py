@@ -308,7 +308,7 @@ class SetupBIDSPipeline(object):
             except FileExistsError:
                 logging.warning('func directory exists')
 
-            logging.info("Completed!")
+        logging.info("Completed!")
 
     def create_events(self, events):
         """ 
@@ -516,7 +516,8 @@ class FmriprepSingularityPipeline(object):
                             --cleanenv {self.minerva_options['image_location']} \
                             {self.bids_root} {self.output} participant \
                             --output-spaces MNI152NLin2009cAsym:res-2 \
-                            --participant-label {sub} --notrack --fs-license-file /software/license.txt"
+                            --participant-label {sub} -w /software/work \
+                            --notrack --fs-license-file /software/license.txt"
                 command = " ".join(command.split())
                 # Ignore freesurfer if specified
                 if not self.freesurfer:

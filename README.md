@@ -1,7 +1,7 @@
 # fmriprepPipeline
 
-A Python pipeline for BIDS creation and fmriprep.
-From DICOM to BIDS directory structure creation, preprocessing with fmriprep, smoothing with AFNI, motion correction with ART Repair/GLM.
+A Python pipeline for BIDS creation and fmriprep. 
+From DICOM to BIDS directory structure creation, preprocessing with fmriprep, smoothing and masking with nilearn, motion correction with fmriprep confounds using nilearn.
 
 ## Installation
 
