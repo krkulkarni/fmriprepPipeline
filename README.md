@@ -39,7 +39,6 @@ output_dir = f"{project_dir}/rawdata/fmriprep_output/"
 dicom_dir = f"{project_dir}/rawdata/dicoms/"
 
 # Define dicom structure
-multiecho=False
 anat = 'anat'
 func = [ 
     '*sess*1',
@@ -49,16 +48,39 @@ func = [
 # Define task name for selected functional data
 task = 'example'
 
-# Define a subject ID
-sub = 'sub-01'
+# Define your list of participants
+# If 'sub-' is at the start of the subject string, it will be removed
+participants = {
+    'participant_id': ['01'],
+    'group': [1],
+    'test_score': [20.5]
+}
 
-# Create the bids root directory
-bp.create_bids_root(bids_root)
+# Define events for subjects and runs
+# Events is a list of event dictionary objects
+# Each event dictionary object has two fields
+#   - participant_id -> a list of IDs of participants that have this event
+#   - event_properties -> a dictionary with three properties: onset, duration, and trial type
+events = [
+    {
+        'participant_id': ['01'],
+        'event_properties': {
+            'onset': [0, 10, 20, 35],
+            'duration': [2, 2, 2, 2],
+            'trial_type': ['face_a', 'face_b', 'face_a', 'face_b']
+        }
+    }
+]
+
 
 # Create the SetupBIDSPipeline object
-setup = bp.SetupBIDSPipeline(dicom_dir, name, anat, func, task, bids_root, ignore=True)
+setup = bp.SetupBIDSPipeline(participants, dicom_dir, anat_pattern, func_patterns, task, bids_root)
+# Create the bids root directory
+setup.create_bids_root()
 # Validate DICOMs and path names
-setup.validate()
+setup.validate(overwrite=False, ignore=True)
+# Obtain the paths to the DICOM directories/files
+setup.obtain_dicoms(auto_dicom=True)
 # Initialize BIDS hierarchy
 setup.create_bids_hierarchy()
 # Use dcm2niix to convert and rename DICOMs to NIFTIs
@@ -81,14 +103,13 @@ See the sample_singleecho_pipeline.py and sample_multiecho_pipeline.py files for
 | Parameter | Function |
 | :----: | --- |
 | `dicom_dir` | Base folder that contains all anatomical and functional DICOMs |
-| `name` | Subject ID (with or without 'sub-' prefix) |
-| `anat` | Regex expression for path to anatomical DICOM folder |
-| `func` | Array of regex expressions for paths to functional DICOMs (see multiecho option for additional information |
+| `participants` | Dictionary of Subject ID and related properties |
+| `anat_pattern` | Regex expression for path to anatomical DICOM folder |
+| `func_patterns` | Array of regex expressions for paths to functional DICOMs (see multiecho option for additional information |
 | `task` | Task name |
 | `root` | Path name for the BIDS root directory you would like to create |
-| `ignore=False` | If ignore is set to True, no error is generated if the subject folder exists in the BIDS root |
-| `overwrite=False` | If overwrite is True, existing subject folders will be deleted in the BIDS root |
-| `multiecho=False` | If multiecho is True, `func` must be inputted as an array of arrays. Each element array contains paths to all the echoes that belong to that run |
+| `ignore=False` | Available for validate method: If ignore is set to True, no error is generated if the subject folder exists in the BIDS root |
+| `overwrite=False` | Available for validate method: If overwrite is True, existing subject folders will be deleted in the BIDS root |
 
 ### run_fmriprep_docker function
 
@@ -114,7 +135,7 @@ Note that the following `minerva_options` dictionary must be created as well
 
 | Parameter | Function |
 | :----: | --- |
-| `image_location` | Path to folder that contains the fmriprep.# simg Singularity image |
+| `image_location` | Path to the fmriprep.# simg Singularity image |
 | `batch_dir` | Path to directory that will contain the batch scripts for HPC |
 | `project_dir` | Path to top level directory that contains all the run specific directories |
 

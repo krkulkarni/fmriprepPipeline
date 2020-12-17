@@ -9,6 +9,7 @@ import subprocess
 import logging
 import datetime, time
 import numpy as np
+from copy import deepcopy
 
 # For mask, smooth, denoise
 from nilearn.input_data import NiftiMasker
@@ -25,41 +26,6 @@ from nilearn import datasets
 # Check for correct versioning
 if sys.version_info[0] < 3:
     raise Exception("Must be using Python 3")
-
-
-def create_bids_root(bids_root, description="This is a default description"):
-    """ 
-    Creates the bids root directory.
-  
-    Parameters: 
-    bids_root(str): path to bids_roots
-  
-    """
-
-    # Create root directory
-    # Create dataset_description.json and README
-    if not os.path.isdir(bids_root):
-        os.makedirs(bids_root)
-        ds_desc =   {
-                "Name": description,
-                "BIDSVersion": "1.0.1",
-                "License": "CC0",
-                "Authors": [
-                    "Kaustubh Kulkarni",
-                    "Daniela Schiller",
-                    "Xiaosi Gu"
-                ],
-                "DatasetDOI": "10.0.2.3/dfjj.10"
-                }
-        dd_path = f'{bids_root}/dataset_description.json'
-        print(dd_path)
-        with open(dd_path, 'w') as outfile:
-            json.dump(ds_desc, outfile)
-        readme_path = f'{bids_root}/README'
-        with open(readme_path, 'w') as outfile:
-            outfile.write('This is a README. Replace with your README information')
-    else:
-        print('Root exists! Not overwriting.')
 
 
 class SetupBIDSPipeline(object):
@@ -94,7 +60,7 @@ class SetupBIDSPipeline(object):
         str: matching dicom path name    
 
         """
-        match = glob.glob(f"{self.pdict['dicom_dir']}/{name}/{pattern}/")
+        match = glob.glob(f"{self.dicom_dir}/{name}/{pattern}/")
         if len(match) ==1:
             logging.info(f'{pattern} has a match: {match[0]}')
             return match[0]
@@ -122,14 +88,12 @@ class SetupBIDSPipeline(object):
             raise OSError(f'{pattern} has no matches!\nOutput of glob: {match}\nPlease fix your wildcards.')
     
 
-    def __init__(self, sub_list, dicom_dir, anat_pattern, func_patterns, task, root, 
-        ignore=False, overwrite=False,
-        progress_dir=f'{os.getcwd()}/fpprogress/'):
+    def __init__(self, participants, dicom_dir, anat_pattern, func_patterns, task, root):
         """ 
         Constructs the necessary attributes for the SetupBIDSPipeline instance. 
       
         Parameters: 
-        sub_list (str list): List of all participant IDs
+        participants (str list): List of all participant IDs
         dicom_dir (str): Root path of all DICOMs
         anat_pattern (str): Regex expression of path to anatomical DICOMs within the root DICOM directory
         func_patterns (str list): List of regex expressions of paths to function DICOMs within the root DICOM directory
@@ -143,12 +107,6 @@ class SetupBIDSPipeline(object):
         obj: SetupBIDSPipeline instance 
       
         """
-
-        ### Create the fmriprepPipeline progress directory if it doesn't exist 
-        ### This folder holds the current progress 
-        # if not os.path.exists(progress_dir):
-        #     os.makedirs(progress_dir)
-        # self.progress_dir = progress_dir
 
         # Configure logging options
         x = datetime.datetime.now()
@@ -169,24 +127,22 @@ class SetupBIDSPipeline(object):
         # Note that for func, if the data is single echo, there is a array of runs
 
         # Uses glob to match wildcards, but throws error if there are multiple matches
-        self.pdict = {}
-        self.pdict['root'] = root
-        self.pdict['task'] = task
-        self.pdict['dicom_dir'] = dicom_dir
+        self.root = root
+        self.task = task
+        self.dicom_dir = dicom_dir
         self.anat_pattern = anat_pattern
         self.func_patterns = func_patterns
 
         # Use strip 'sub-' from name if it exists
         # The 'sub-' will be added later for BIDS formatting
-        self.pdict['sub_list'] = []
-        for name in sub_list:
+        sub_list = []
+        for name in participants['participant_id']:
             if name.startswith('sub-'):
-                self.pdict['sub_list'].append(name[4:])
+                sub_list.append(name[4:])
             else:
-                self.pdict['sub_list'].append(name)
-        
-        self.pdict['overwrite'] = overwrite
-        self.pdict['ignore'] = ignore
+                sub_list.append(name)
+        participants['participant_id'] = sub_list
+        self.participants = participants
 
         # Initialize paths for BIDS-formatted folders and files
         # raw_anat_paths     ->  list of paths to subject BIDS anat folders
@@ -194,8 +150,51 @@ class SetupBIDSPipeline(object):
         self.raw_anat_paths = []
         self.raw_func_paths = []
 
+        print(participants)
 
-    def validate(self):
+    def create_bids_root(self, description="This is a default description"):
+        """ 
+        Creates the bids root directory.
+      
+        Parameters: 
+        bids_root(str): path to bids_roots
+      
+        """
+
+        # Create root directory
+        # Create dataset_description.json and README
+        if not os.path.isdir(self.root):
+            os.makedirs(self.root)
+            logging.info('Creating root directory.')
+        else:
+            logging.info(f"Root directory ({self.root}) exists.")
+
+        dd_path = f'{self.root}/dataset_description.json'
+        if not os.path.isfile(dd_path):
+            logging.info('Creating template dataset_description.json. Please update!')
+            ds_desc =   {
+                    "Name": description,
+                    "BIDSVersion": "1.0.1",
+                    "License": "CC0",
+                    "Authors": [
+                        "Kaustubh Kulkarni",
+                        "Daniela Schiller",
+                        "Xiaosi Gu"
+                    ],
+                    "DatasetDOI": "10.0.2.3/dfjj.10"
+                    }
+            with open(dd_path, 'w') as outfile:
+                json.dump(ds_desc, outfile)
+
+        readme_path = f'{self.root}/README'
+        if not os.path.isfile(readme_path):
+            logging.info('Creating template README. Please update!')
+            with open(readme_path, 'w') as outfile:
+                outfile.write('This is a README. Replace with your README information')
+        
+
+
+    def validate(self, overwrite=False, ignore=True):
         """ 
         Validates the presence of BIDS root directory and DICOM folders, 
         and ensures that subject directory doesn't already exist.
@@ -206,7 +205,7 @@ class SetupBIDSPipeline(object):
 
         # Validate that BIDS root directory exists!
         # This directory is created by the 'create_bids_root' function below!
-        if os.path.isdir(self.pdict['root']):
+        if os.path.isdir(self.root):
             logging.info('Root Exists.')
             self.root_exists = True
         else:
@@ -214,23 +213,23 @@ class SetupBIDSPipeline(object):
             raise OSError('Root does not exist!')
 
         # Loop over all subjects
-        for name in self.pdict['sub_list']:
+        for name in self.participants['participant_id']:
             
             # Check if the subject folder already exists, and will throw an error if it does
             # If overwrite is on, the subject folder will be deleted
             # If ignore is on, the analysis will proceed even if the subject folder exists
-            if os.path.isdir(f'{self.pdict["root"]}/sub-{name}'):
-                if self.pdict['overwrite']:
+            if os.path.isdir(f'{self.root}/sub-{name}'):
+                if overwrite:
                     logging.warning(f'Overwrite option selected! Removing subject {name}')
-                    shutil.rmtree(f'{self.pdict["root"]}/sub-{name}')
-                elif self.pdict['ignore']:
+                    shutil.rmtree(f'{self.root}/sub-{name}')
+                elif ignore:
                     logging.warning(f"{name}' exists! Continuing forward (risky).")
                 else:
                     logging.error(f"{name}' exists! Try a different subject name, or ignore/delete existing folder.")
                     raise OSError(f"'{name}' exists! Try a different subject name, or ignore/delete existing folder.")
 
             # Check that the anatomical DICOM folder exists
-            match = glob.glob(f"{self.pdict['dicom_dir']}/{name}/{self.anat_pattern}/")
+            match = glob.glob(f"{self.dicom_dir}/{name}/{self.anat_pattern}/")
             if not match:
                 logging.error(f"'{self.anat_pattern}' does not exist! Input a valid anatomical DICOM pattern.")
                 raise OSError(f"'{self.anat_pattern}' does not exist! Input a valid anatomical DICOM pattern.")
@@ -238,7 +237,7 @@ class SetupBIDSPipeline(object):
                 logging.info(f'{name} anatomical dicom directory exists!')
             # Check that the functional DICOM folders exist
             for func in self.func_patterns:
-                match = glob.glob(f"{self.pdict['dicom_dir']}/{name}/{func}/")
+                match = glob.glob(f"{self.dicom_dir}/{name}/{func}/")
                 if not match:
                     logging.error(f"'{func}' does not exist! Input a valid functional DICOM pattern.")
                     raise OSError(f"'{func}' does not exist! Input a valid functional DICOM pattern.")
@@ -257,7 +256,7 @@ class SetupBIDSPipeline(object):
         # Wildcard matching for anatomical dicom directory name
         self.source_anat_paths = []
         self.source_func_paths = []
-        for name in self.pdict['sub_list']:
+        for name in self.participants['participant_id']:
             self.source_anat_paths.append(self._return_dicom_path(name, self.anat_pattern, auto_dicom=auto_dicom))
             
             # Wildcard matching for functional dicom directory name
@@ -268,16 +267,26 @@ class SetupBIDSPipeline(object):
 
 
     def create_bids_hierarchy(self):
-        """ Creates the subject directory and nested anat and func directories."""
+        """ Creates the participants.tsv file, as well as subject directories 
+        and nested anat and func directories.
+        """
+
+        bids_sub_list = []
+        for name in self.participants['participant_id']:
+            bids_sub_list.append(f'sub-{name}')
+        bids_participants_dict = deepcopy(self.participants)
+        bids_participants_dict['participant_id'] = bids_sub_list
+        df = pd.DataFrame.from_dict(bids_participants_dict)
+        df.to_csv(f'{self.root}/participants.tsv', sep='\t', index=False)
 
         logging.info('Creating BIDS hierarchy.....')
         self.raw_anat_paths = []
         self.raw_func_paths = []
 
-        for name in self.pdict['sub_list']:
+        for name in self.participants['participant_id']:
             # Create subject directory
             # If they do, log an error but continue
-            sub_path = f'{self.pdict["root"]}/sub-{name}'
+            sub_path = f'{self.root}/sub-{name}'
             try:
                 os.makedirs(sub_path)
             except FileExistsError:
@@ -301,6 +310,18 @@ class SetupBIDSPipeline(object):
 
             logging.info("Completed!")
 
+    def create_events(self, events):
+        """ 
+        Converts the specified DICOMs into NIFTIs using dcm2niix
+      
+        """
+        for event in events:
+            for name in event['participant_id']:
+                sub_func_path = f'{self.root}/sub-{name}/func'
+                event_tsv_path = f'{sub_func_path}/sub-{name}_task-{self.task}_events.tsv'
+                df = pd.DataFrame.from_dict(event['event_properties'])
+                df.to_csv(f'{event_tsv_path}', sep='\t', index=False)
+
 
     def convert(self):
         """ 
@@ -309,14 +330,14 @@ class SetupBIDSPipeline(object):
         """
 
         self.subwise_raw_func_names = []
-        for (name, source_anat_path, source_func_paths, raw_anat_path, raw_func_path) in zip(self.pdict['sub_list'], 
+        for (name, source_anat_path, source_func_paths, raw_anat_path, raw_func_path) in zip(self.participants['participant_id'], 
             self.source_anat_paths, self.source_func_paths,
             self.raw_anat_paths, self.raw_func_paths):
 
             # Run dcm2niix for anatomical DICOM and rename
             logging.info('Converting anatomical DICOMs to NIFTI and renaming.....')
             raw_anat_name = f'sub-{name}_T1w'
-            raw_anat_path = f'{self.pdict["root"]}/sub-{name}/anat/'
+            raw_anat_path = f'{self.root}/sub-{name}/anat/'
             command = ['dcm2niix', '-z', 'n', '-f', raw_anat_name, '-b', 'y', '-o', raw_anat_path, source_anat_path]
             if not os.path.exists(f'{raw_anat_path}/{raw_anat_name}.nii'):
                 print('Running dcm2niix')
@@ -333,9 +354,9 @@ class SetupBIDSPipeline(object):
             run_counter = 1
             subject_func_names = []
             for func_input in source_func_paths:
-                raw_func_name = f'sub-{name}_task-{self.pdict["task"]}_run-{str(run_counter)}_bold'
+                raw_func_name = f'sub-{name}_task-{self.task}_run-{str(run_counter)}_bold'
                 subject_func_names.append(raw_func_name)
-                raw_func_path = f'{self.pdict["root"]}/sub-{name}/func/'
+                raw_func_path = f'{self.root}/sub-{name}/func/'
                 command = ['dcm2niix', '-z', 'n', '-f', raw_func_name, '-b', 'y', '-o', raw_func_path, func_input]
                 if not os.path.exists(f'{raw_func_path}/{raw_func_name}.nii'):
                     print('Running dcm2niix')
@@ -353,12 +374,12 @@ class SetupBIDSPipeline(object):
 
         # Add TaskName field to BIDS functional NIFTI sidecars
         logging.info('Updating functional NIFTI sidecars.....')
-        for (name, raw_func_path, subject_func_names) in zip(self.pdict['sub_list'], 
+        for (name, raw_func_path, subject_func_names) in zip(self.participants['participant_id'], 
             self.raw_func_paths, self.subwise_raw_func_names):
             for raw_func_name in subject_func_names:
                 with open(f'{raw_func_path}/{raw_func_name}.json') as json_file:
                     data = json.load(json_file)
-                    data['TaskName'] = self.pdict["task"]
+                    data['TaskName'] = self.task
 
                 with open(f'{raw_func_path}/{raw_func_name}.json', 'w') as outfile:
                     json.dump(data, outfile, indent=4, sort_keys=True)
@@ -400,12 +421,12 @@ class FmriprepSingularityPipeline(object):
   
     """
 
-    def __init__(self, subs, bids_root, output, minerva_options, freesurfer=False, cifti_output=False):
+    def __init__(self, participants, bids_root, output, minerva_options, freesurfer=False, cifti_output=False):
         """ 
         Constructs the necessary attributes for the FmriprepSingularityPipeline instance.   
       
         Parameters: 
-        subs (list): List of subject ID strings
+        participants (list): Dictionary of participant IDs and related properties
         bids_root (str): Path to generated BIDS directory
         output (str): Path to store fmriprep output
         minerva_options (dict): Dictionary of HPC-specific options (see below)
@@ -422,7 +443,7 @@ class FmriprepSingularityPipeline(object):
         """
 
         # Define class variables
-        self.subs = subs
+        self.subs = participants['participant_id']
         self.bids_root = bids_root
         self.output = output
         self.freesurfer = freesurfer
@@ -450,9 +471,12 @@ class FmriprepSingularityPipeline(object):
             raise OSError('fmriprep image does not exist in the given directory!')
 
         # Create the specified batch directory folder if it doesn't exist
-        logging.info('Creating batch directory for subject scripts')
+        logging.info('Setting up batch directory for subject scripts')
         if not os.path.isdir(self.batch_dir):
             os.makedirs(self.batch_dir)
+            logging.info(f'Creating batch dir at {self.batch_dir}')
+        else:
+            logging.info(f'{self.batch_dir} exists!')
         # Create the batchoutput folder within the batch directory folder
         # This will hold the outputs from each of the batch scripts
         if not os.path.isdir(f'{self.batch_dir}/batchoutput'):
@@ -514,7 +538,7 @@ class FmriprepSingularityPipeline(object):
             json.dump(self.minerva_options, f) 
 
 
-    def run_singularity_batch(self, subs, overwrite=False):
+    def run_singularity_batch(self, overwrite=False):
         """ 
         Submits generated subject batch scripts to the HPC. 
       
@@ -525,7 +549,7 @@ class FmriprepSingularityPipeline(object):
 
         logging.info('Submitting singularity batch scripts to the private queue')
         counter = 1
-        for sub in subs:
+        for sub in self.subs:
             # Submit job to scheduler
             if sub.startswith('sub-'):
                 sub = sub[4:]
